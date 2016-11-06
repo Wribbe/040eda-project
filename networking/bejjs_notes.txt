@@ -1,0 +1,327 @@
+2.1) Two types of sockets.
+
+  Stream sockets - TCP - SOCK_STREAM
+  Datagram sockets - UPD - SOCK_DGRAM
+
+  TCP - always correct order, error free.
+  UDF - possibly arrives out of order / not at all, if arrives, error free.
+
+  To make sure that UDP arrives, usually add additional protocol/check on top
+  of UDP.
+
+2.2) Low level nonsens and network theory.
+
+  Encapsulation: [ Ethernet [ IP [ UDP[ TFTP [ data ]]]]]
+
+  Layered Network Model:
+    - Application.
+    - Presentation
+    - Session
+    - Transport
+    - Network
+    - Data Lik
+    - Physical
+
+  TCP: send()
+  UDP: encapsulation + sendto()
+
+
+3) IP Addresses, structs and Data Munging.
+
+3.1) IP Adresses, version 4 and 6.
+
+  IPv4 = 2^32
+  IPv6 = 2^128
+
+3.1.1) Subnets.
+
+  network vs host portion.
+  192.0.2.12 -> host 12 on network 192.0.2.0.
+
+  Class A -> 8-bits/1-byte for network | 24-bits/3-bytes for hosts (~16*10^6)
+  [..]
+  Class C -> 24-bits/3-bytes for network | 8-bits/1-byte for hosts (~256)
+
+  network portion retrievable with 'netmask'. Is a bitwise AND operation to get
+  network number. Ex. 255.255.255.0 gives: 192.0.2.12 -> 192.0.2.0
+
+  to allow more hosts, netmasks don't need to be a multiple of eight, can be
+  arbitrary.
+
+  Alternative style: <network-address>/<netmask-bitsize-in-decimal>
+  ex: 192.0.2.12/30 for net-mask of 30-bits network.
+
+3.1.2) Port Numbers.
+
+  Layered Network Model -> IP Layer -> Host-to-Host Transport layer (TCP / UDP).
+
+  Apart from IP-number, additional 16-bit number, port-number used for TCP and
+  UDP communication. (akin to local address)
+
+  ports < 1024 often special ports.
+
+3.2) Byte order.
+
+  Big Endian / Network byte order -> 2^n 2^n-1 ... 2^0.
+  Little Endian -> 2^0 2^1 ... 2^n.
+
+  Host byte order -> how it's stored on a specific computer, depends.
+  Always assume the host byte order is wrong, run everything through a
+  conversion function.
+
+  Conversion functions primitives:
+    n - network
+    h - host
+    s - short
+    l - long
+
+  Assembly:
+    <from>'to'<to><size>,
+    htons() - host 'to' network short.
+    htonl() - host 'to' network long.
+    ntohs() - network 'to' host short.
+    ntohl() - network 'to' host long.
+
+    no 64-bit variant.
+    floating-point -> serialization.
+
+3.3.) structs.
+
+  socket descriptor -> int.
+
+  struct addrinfo; prep socket address structures for subsequent use. + use for
+  host name and service name lookups.
+
+    struct addrinfo {
+      int               ai_flags;     // AI_PASSIVE, AI_CANONNAME. etc.
+      int               ai_family;    // AF_INET, AF_INET6, AF_UNSPEC.
+      int               ai_socktype;  // SOCK_STREAM, SOCK_DGRAM.
+      int               ai_protocol;  // use 0 for "any".
+      size_t            ai_addrlen;   // size of the ai_addr in bytes.
+      struct sockaddr * ai_addr;      // struct socckaddr_in or _in6.
+      char            * ai_canonname; // full canonical hostname.
+
+      struct addrinfo * ai_next;      // linked list, next node.
+    };
+
+  addrinfo + getaddrinfo() returns pointer to new linked list filled with stuff
+  we need.
+
+  IP type: AF_INET -> IPv4, AF_INET6 -> IPv6, AF_UNSPEC -> agnostic.
+
+  don't necessary need to write to ai_addr = struct sockaddr, but will be
+  looking into it for information.
+
+    struct sockaddr {
+      unsigned short  sa_family;    // address family, AF_xxx.
+      char            sa_data[14];  // 14 bytes of protocol address.
+    };
+
+  sa_family, could be many things, this document, AF_INET or AF_INET6.
+  sa_data, destination address and port number for socket.
+
+  compatible version to sockaddr -> sockaddr_in / _in6 (in = internet).
+  these are interchangeable, can cast one to the other.
+
+    // (IPv4 only -- see struct sockaddr_in6 for IPv6)
+
+    struct sockaddr_in {
+      short int           sin_family;   // Address family AF_INET.
+      unsigned short int  sin_port;     // Port number.
+      struct in_addr      sin_addr;     // Internet address.
+      unsigned char       sin_zero[8];  // Same size as struct sockaddr.
+    };
+
+  sin_zero used to match length of addrinfo package, use memset() to set to
+  zero.
+
+  Remember, sin_port needs to be in Network Byte Order -> htons().
+
+    // (IPv4 only - see strut in6_addr for IPv6)
+
+    // Internet address (a structure for historical reasons)
+    struct in_addr {
+      uint32_t s_addr; // that's a 32-bit int (4-bytes).
+    };
+
+  get address with (struct sockaddr_in)ina.sin_addr.s_addr.
+
+    // (IPv6 only -- see struct sockaddr_in and struct in_addr for IPv4).
+
+    struct sockaddr_in6 {
+      u_int16_t       sin6_family;    // Address family AF_INET6.
+      u_int16_t       sin6_port;      // port number in Network Byte Order.
+      u_int32_t       sin6_flowinfo;  // IPv6 flow information.
+      struct in6_addr sin6_addr;      // IPv6 address.
+      u_int32_t       sin6_scope_id;  // Scope ID.
+    };
+
+    struct in6_addr {
+      unsigned char s6_addr[16]; // IPv6 address.
+    };
+
+  If the type is not known (v4/v6) then use larger struct that can hold both
+  and cast when known.
+
+    struct sockaddr_storage {
+      sa_family_t   ss_family;    // address family.
+      // implementation specific padding.
+    };
+
+  check if ss_family is AF_INET or AF_INET6, and cast appropriately.
+
+3.4) IP Addresses II.
+
+  Ingredients:
+
+    1x struct sockaddr_in ina with IPv4/v6 address.
+
+  Result:
+
+    Convert address to network representation.
+
+  Method:
+
+    function inet_pton() converts ina strut to in_addr or in6_addr struct
+    depending on AF_INET or AF_INET6.
+    inet_pton() -> "present to network".
+
+  Details:
+
+    struct sockaddr_in sa; // IPv4.
+    struct sockaddr_in6 sa6; // IPv6.
+
+    inet_pton(AF_INET, "10.12.110.57", &(sa.sin_addr)); // IPv4.
+    inet_pton(AF_INET6, "2001:db8:63b3:1::3490", &(sa6.sin6_addr)); // IPv6.
+
+  The old functions inet_addr() / inet_aton() are deprecated.
+
+  inet_pton() returns -1 if there was an error with the conversion.
+
+  to represent a binary address as a string, use inet_ntop() (" network to
+  presentation").
+
+    // IPv4:
+
+    char ip4[INET_ADDRSTRLEN];  // Space to hold the IPv4 string.
+    struct sockaddr_in sa;      // Pretend this is loaded with something.
+
+    inet_ntop(AF_INET, &(sa.sin_addr), ip4, INET_ADDRSTRLEN);
+
+    printf("The IPv4 address is: %s\n", ip4);
+
+
+    // IPv6:
+
+    char ip6[INET6_ADDRSTRLEN]; // Space to hold the IPv6 string.
+    struct sockaddr_in6 sa6;    // Pretend this is loaded with something.
+
+    inet_ntop(AF_INET6, &(sa6.sin6_addr), ip6, INET6_ADDRESSSTRLEN);
+
+    printf("The address is: %s\n", ip6);
+
+  The above functions only work with numerical addresses. To use a host lookup
+  for DNS names, use getaddrinfo().
+
+3.4.1) Private (Or Disconnected) Networks.
+
+  Private networks often translate internal address to external address through
+  NAT (Network Address Translation) process.
+
+  10.x.x.x and 192.168.x.x are reserved for fully disconnected / firewalled
+  networks.
+
+  NAT and IPv6 don't mix well, since so many IP addresses renders it
+  unnecessary. Can do IPv6 -> IPv4 conversion to make it work if it's needed.
+
+
+4.) Jumping from IPv4 to IPv6.
+
+  1.) Keep agnostic by using getaddrinfo() to get struct sockaddr info instead
+      of manual packing.
+  2.) Hard-coding IP related info? -> wrap in helper function.
+  3.) AF_INET -> AF_INET6.
+  4.) PF_INET -> PF_INET6.
+  5.) Change INADDR_ANY -> in6addr_any assignments.
+
+    struct sockaddr_in sa;
+    struct sockaddr_in6 sa6;
+
+    sa.sin_addr.s_addr = INADDR_ANY; // Use my IPv4 address.
+    sa6.sin6_addr = in6addr_any; // Use my IPv6 address.
+
+    // There is also a initializer for the sockaddr_in6 struct.
+    struct in6_addr ia6 = IN6ADDR_ANY_INIT;
+
+  6.) struct sockaddr_in -> struct sockaddr_in6.
+  7.) struct in_addr -> struct in6_addr.
+  8.) inet_aton() / inet_addr() -> inet_pton().
+  9.) inet_ntoa() -> inet_ntop().
+  10.) gethostbyname() -> getaddrinfo().
+  11.) gethostbyaddr() -> getnameinfo().
+  12.) IPv6 multicast instead of INADDR_BROADCAST.
+
+
+5.) System Calls or Bust.
+
+  System calls for socket-API.
+
+5.1.) getaddrinfo() - Prepare to launch!
+
+  getaddrinfo() -> Sets up the structs needed later on + DNS lookup etc.
+
+    #include <sys/types.h>
+    #include <sys/socket.h>
+    #include <netdb.h>
+
+    int getaddrinfo(const char * node,    // e.g. "www.example.com" or IP.
+                    const char * service, // e.g. "http" or port number.
+                    const struct addrinfo * hints,
+                    struct addrinfo ** res);
+
+  3x parameters + 1 ref to linked list for results.
+
+  hints is a struct addrinfo with relevant information.
+
+  set up for listen on port 3490:
+
+    int status;
+    struct addrinfo hints;
+    struct addrinfo * serverinfo; // will point to the results.
+
+    memset(&hints, 0, sizeof_hints);  // make sure the struct is empty.
+    hints.ai_family = AF_UNSPEC;      // don't care if v4 or v6.
+    hints.ai_socktype = SOCK_STREAM;  // TCP stream socket.
+    hints.ai_flags = AI_PASSIVE;      // fill in IP automatically.
+
+    if ((status = getaddrinfo(NULL, "3490", &hints, &serverinfo)) != 0) {
+      fprintf(stderr, "getaddrinfo error: %s\n", gai_strerror(status));
+      exit(1);
+    }
+
+    // serverinfo points to a linked list of 1+ addrinfos structs.
+
+    // [..] do server stuff until done [..]
+
+    freeaddrinfo(servinfo); // free the linked list.
+
+  passing AI_PASSIVE flag sets the node (here NULL) to current host.
+
+  set up structures needed for client to connect to "www.example.net" port
+  3490:
+
+    int staus;
+    struct addrinfo hints;
+    struct addrinfo * servinfo; // will point to results.
+
+    memset(&hints, 0, sizeof hints);  // Make sure struct is empty.
+    hints.ai_family = AF_UNSPEC;      // IP agnostic.
+    hints.ai_socktype = SOCK_STREAM;  // TCP stream sockets.
+
+    // Get ready to connect.
+    status = getaddrinfo("www.example.net", "3490", &hints, &servinfo);
+
+    // servinfo points to a linked list with 1+ addrinfo structs.
+
+    [..]
+
