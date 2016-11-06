@@ -325,3 +325,283 @@
 
     [..]
 
+5.2 socket() -- Get the File Descriptor!
+
+  #include <sys/types.h>
+  #include <sys/socket.h>
+
+  int socket(int domain, int type, int protocol)
+
+  either hard-code:
+    - domain:   PF_INET / PF_INET6
+    - type:     SOCK_STREAM / SOCK_DGRAM
+    - protocol: 0 (sets the protocol to the correct one for type.)
+
+  or, use getprotobyname() to look up the wanted protocol, "tcp" or "udp".
+
+  AF_INET* (AddressFamily) always the same as PF_INET* (ProtocolFamily), PF was
+  never used, but should be used in socket() for maximal correctness.
+
+  socket-example:
+
+    int socket;
+    struct addrinfo hints;
+    struct addrinfo * results;
+
+    // Do the lookup.
+    <filled hint structure>
+
+    getaddrinfo("www.example.com", "http", &hints, &results);
+
+    // Error checking etc.
+    [..]
+
+    socket = socket(results->ai_family,
+                    results->ai_socktype,
+                    results->ai_protocol);
+
+5.3) bind() -- What port am I on?
+
+  Associate a given socket to a port.
+
+  bind():
+
+    #include <sys/types.h>
+    #include <sys/socket.h>
+
+    int bind(int sockfd, structk sockaddr * my_addr, int addrlen);
+
+  sockfd    - socket file descriptor.
+  my_addr   - pointer to a sockaddr struct with info about address.
+  addrlen   - size of address in bytes.
+
+  bind() example:
+
+    struct addrinfo hints = {0};
+    struct addrinfo * results;
+    int socketfd;
+
+    hints.ai_family = AF_UNSPEC;      // IPv agnostic.
+    hints.ai_socktype = SOCK_STREAM;  // TCP stream socket.
+    hints.ai_flags = AI_PASSIVE;      // Fill in the IP automatically.
+
+    getaddrinfo(NULL, "3490", &hints, &results);
+
+    // Make a socket.
+
+    socketfd = socket(results->ai_family,
+                      results->ai_socktype,
+                      results->ai_protocol);
+
+    // Bind it to the port that was passed to addrinfo.
+    bind(socketfd, results->ai_addr, results->ai_addrlen);
+
+    Use ports 1024 -> 65535
+
+  Possible to reuse sockets:
+
+    int yes=1;
+
+    if (setsockopt(listener, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof yes) == -1) {
+      perror("setsockopt");
+      exit(1);
+    }
+
+5.4. connect() -- Hey, you!
+
+  connect():
+
+    #include <sys/types.h>
+    #include <sys/socket.h>
+
+    int connect(int socketfd,
+                struct sockaddr * server_address,
+                int addresslen);
+
+    socketfd        - socket file descriptor.
+    server_address  - destination port and ip address.
+    addresslen      - length of server address structure.
+
+  connect() - example:
+
+    struct addrinfo hints = {0};
+    struct addrinfo * result;
+    int socketfd = 0;
+
+    hints.ai_family = AF_UNSPEC;
+    hints.ai_socktype = SOCK_STREAM;
+
+    getaddrinfo("www.example.com", "3490", &hints, &res);
+
+    // Make a socket.
+
+    socketfd = socket(result->ai_family,
+                      result->ai_socktype,
+                      result->ai_protocol);
+
+    // Connect!
+
+    connect(socketfd, result->ai_addr, result->ai_addrlen);
+
+  connect() returns -1 on error.
+  No need to specify bind() port on outgoing connection, kernel handles that
+  automatically.
+
+5.5) listen() -- Will somebody please call me?
+
+  listen():
+
+    int listen(int socketfd, int backlog);
+
+  socketfd  - socket file descriptor.
+  backlog   - size of connection queue.
+
+  on error, returns -1 and sets errno.
+
+  listen() - pseudo-example:
+
+    getaddrinfo();
+    socket();
+    bind();
+    listen();
+    /* accept() here */
+
+5.6) accept() -- "Thank you for calling port 3490."
+
+  accept() returns a new socket for sending and receiving, old one is still
+  listening.
+
+  accept():
+
+    #include <sys/types.h>
+    #include <sys/socket.h>
+
+    int accept(int sockfd, strucxtk sockaddr * addr, socklen_t * addrlen);
+
+  sockfd    - listening socket file descriptor.
+  addr      - usually points to a local sockaddr_storage struct, where
+              information about the incoming connection is stored.
+  addrlen   - local integer variable that should be set to sizeof(struct
+              sockaddr_storage), before the address is passed to accept().
+
+5.7) send() and recv() -- Talk to me, baby!
+
+  send() and recv() used to communicate over stream sockets or connected
+  datagram sockets. For unconnected datagram, use sendto() and recvfrom()
+  functions.
+
+  send():
+
+    int send(int sockfd, const void * msg, int len, int flags);
+
+  sockfd    - socket descriptor that data should go to. (typ. from socket() or
+              accept())
+  msg       - pointer to data that should be sent.
+  len       - length of data in bytes.
+  flags     - set to 0.
+
+  send() - example:
+
+    char * msg = "Beej was here!";
+    int len = 0;
+    int bytes_sent = 0;
+
+    [..]
+
+    len = strlen(msg);
+    bytes_sent = send(sockfd, msg, len, 0);
+
+    [..]
+
+  the bytes_sent can be less then len!
+
+  recv():
+
+    int recv(int sockfd, void * buf, int len, int flags);
+
+  sockfd    - socket descriptor to read from.
+  buf       - buffer to read information into.
+  len       - maximum length of buffer.
+  flags     - set to 0.
+
+  returns bytes received, -1 on error and 0 on closed connection.
+
+5.8. sendto() and recvfrom() -- Talk to me, DGRAM-style.
+
+  int sendto(int sockfd,
+             const void * msg,
+             int len,
+             unsigned int flags,
+             const struct sockaddr * to,
+             socklen_t tolen);
+
+  same as send() but with a pointer to sockaddr struct through to, which should
+  be an instance of sockaddr through the equivalent sockaddr_in / sockaddr_in6
+  structs.
+
+  tolen - sizeof(struct sockaddr_storage);
+
+  int recvfrom(int sockfd,
+               void * buf,
+               int len,
+               unsigned int flags,
+               struct sockaddr * from,
+               int * fromlen);
+
+  from - pointer to local sockaddr_storage.
+  fromlen - sizeof(struct sockaddr_storage).
+
+  sockaddr_storage enables the system to be IPv-agnostic.
+
+  If a datagram socket is connect()ed it's possible to use send() recv() as
+  'normal', from/to are automatically added.
+
+5.9 close() and shutdown() -- Get out of my face!
+
+  close():
+
+    close(sockfd);
+
+  closes socket for further reading/writing.
+
+  shutdown():
+
+    int shutdown(int sockfd, int how);
+
+  sockfd  - socket file descriptor.
+  how     - how the socket is closed.
+            * 0 - Further receives are disallowed.
+            * 1 - Further sends are disallowed.
+            * 2 - Further sends/receives disallowed. (same as close())
+
+  shutdown() does not free the socket, only changes the usability.
+  To release the socket, close() must be called.
+
+  If in a Windows environment, the command is closesocket() instead of close().
+
+5.10 getpeername() -- Who are you?
+
+  getpeername():
+
+    int getpeername(int sockfd, struct sockaddr * addr, int * addrlen);
+
+  returns information about the other side of the connection.
+
+  sockfd    - descriptor of the connected stream socket.
+  addr      - pointer to a sockaddr/_in struct.
+  addrlen   - pointer to a int representing size of sturct sockaddr.
+
+5.11 gethostname() -- Who am I?
+
+  gethostname() - returns name of computer that program is running on.
+
+  return ip of computer if used with gethostbyname() function.
+
+  gethostname():
+
+    #include <unistd.h>
+
+    int gethostname(char * hostname, size_t size);
+
+
+6. Client-Server Background.
