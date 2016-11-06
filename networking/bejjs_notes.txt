@@ -605,3 +605,7 @@
 
 
 6. Client-Server Background.
+
+  See code examples.
+
+  [..]
