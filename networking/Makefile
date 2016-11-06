@@ -2,6 +2,8 @@ dir_source := src
 dir_objects := objects
 dir_executables := executables
 
+CC = gcc
+
 vpath %.c $(dir_source)
 vpath %.o $(dir_objects)
 
@@ -14,7 +16,7 @@ sources := $(foreach filename,$(wildcard $(dir_source)/*.c),$(notdir $(filename)
 objects := $(sources:.c=.o)
 executables := $(foreach filename,$(sources:.c=),$(dir_executables)/$(filename))
 
-my_flags = -Wall -Wextra -pedantic -std=c99 -Wwrite-strings -g
+my_flags = -Wall -Wextra -pedantic -std=gnu11 -Wwrite-strings -g
 libraries =
 FLAGS = $(libraries) $(my_flags) $(CFLAGS)
 
