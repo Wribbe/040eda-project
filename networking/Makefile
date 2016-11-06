@@ -30,6 +30,7 @@ mkdirs:
 clean:
 	rm -rf $(dir_objects)
 	rm -rf $(dir_executables)
+	rm -rf vgcore.*
 
 %.o : %.c | mkdirs
 	$(CC) -c $(FLAGS) $< -o $(dir_objects)/$@
