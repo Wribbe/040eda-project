@@ -17,7 +17,7 @@ objects := $(sources:.c=.o)
 executables := $(foreach filename,$(sources:.c=),$(dir_executables)/$(filename))
 
 my_flags = -Wall -Wextra -pedantic -std=gnu11 -Wwrite-strings -g
-libraries =
+libraries = -lpthread
 FLAGS = $(libraries) $(my_flags) $(CFLAGS)
 
 .PHONY: all mkdirs clean
