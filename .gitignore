@@ -1,0 +1,6 @@
+# Specific folders.
+**/executables
+**/objects
+
+# vgcore files.
+vgcore.*
