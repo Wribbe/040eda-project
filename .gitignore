@@ -1,6 +1,8 @@
 # Specific folders.
 **/executables
 **/objects
+**/overleaf_*
 
 # vgcore files.
 vgcore.*
+
