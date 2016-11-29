@@ -12,7 +12,9 @@
 #include <signal.h>
 #include <pthread.h>
 
-#define PORT "3490"
+#define INPORT "3490"
+#define OUTPORT "3491"
+
 #define BACKLOG 10
 
 void * get_in_address(struct sockaddr * sa) {
@@ -22,51 +24,46 @@ void * get_in_address(struct sockaddr * sa) {
     return &(((struct sockaddr_in6 * )sa)->sin6_addr);
 }
 
-int main(void)
-{
-    // Set up server parameters.
-    int socket_descriptor = 0;
-    int new_descriptor = 0;
 
-    typedef struct addrinfo addrinfo;
+struct socket_data {
+    int * socket_descriptor;
+    struct addrinfo hints;
+    struct sockaddr_storage * their_address;
+    struct addrinfo * current;
+    char string_buffer[INET6_ADDRSTRLEN];
+};
 
-    addrinfo hints = {0};
-    addrinfo * server_info;
-    addrinfo * current;
-
-    struct sockaddr_storage their_address;
-    socklen_t sin_size;
+void open_socket(const char * PORT, struct socket_data * socket_data) {
 
     int yes = 1;
 
-    char string_buffer[INET6_ADDRSTRLEN];
-
-    int return_value = 0;
-
     // Set up hints.
-    hints.ai_family = AF_UNSPEC;
-    hints.ai_socktype = SOCK_STREAM;
-    hints.ai_flags = AI_PASSIVE; // Use host ip.
+    socket_data->hints.ai_family = AF_UNSPEC;
+    socket_data->hints.ai_socktype = SOCK_STREAM;
+    socket_data->hints.ai_flags = AI_PASSIVE; // Use host ip.
 
-    return_value = getaddrinfo(NULL, PORT, &hints, &server_info);
+    struct addrinfo * server_info = NULL;
+
+    int return_value = getaddrinfo(NULL, PORT, &socket_data->hints, &server_info);
     if (return_value != 0) {
         fprintf(stderr, "getaddrinfo %s\n", gai_strerror(return_value));
-        return 1;
+        exit(1);
     }
 
     // Loop through all the results and bind to the first one possible.
-    current = server_info;
-    while(current != NULL) {
+    socket_data->current = server_info;
+    while(socket_data->current != NULL) {
 
-        socket_descriptor = socket(current->ai_family,
-                                   current->ai_socktype,
-                                   current->ai_protocol);
-        if (socket_descriptor == -1) {
+        *(socket_data->socket_descriptor) = socket(socket_data->current->ai_family,
+                                                   socket_data->current->ai_socktype,
+                                                   socket_data->current->ai_protocol);
+
+        if (*socket_data->socket_descriptor == -1) {
             perror("server: socket");
             continue;
         }
 
-        return_value = setsockopt(socket_descriptor,
+        return_value = setsockopt(*socket_data->socket_descriptor,
                                   SOL_SOCKET,
                                   SO_REUSEADDR,
                                   &yes,
@@ -77,12 +74,12 @@ int main(void)
             exit(1);
         }
 
-        return_value = bind(socket_descriptor,
-                            current->ai_addr,
-                            current->ai_addrlen);
+        return_value = bind(*socket_data->socket_descriptor,
+                            socket_data->current->ai_addr,
+                            socket_data->current->ai_addrlen);
 
         if (return_value == -1) {
-            close(socket_descriptor);
+            close(*socket_data->socket_descriptor);
             perror("server: bind");
             continue;
         }
@@ -93,35 +90,62 @@ int main(void)
     // Free server_info data.
     freeaddrinfo(server_info);
 
-    if (current == NULL) {
+    if (socket_data->current == NULL) {
         fprintf(stderr, "server: failed to bind\n");
         exit(1);
     }
 
-    if (listen(socket_descriptor, BACKLOG) == -1) {
+    if (listen(*socket_data->socket_descriptor, BACKLOG) == -1) {
         perror("listen");
         exit(1);
     }
 
+}
+
+
+void * receive_work_function(void * input_data)
+{
+
+    // Get new empty socket data struct.
+
+    int socket_descriptor = 0;
+    int new_socket_descriptor = 0;
+
+    struct socket_data data = {0};
+    struct sockaddr_storage their_address;
+
+    data.their_address = &their_address;
+    data.socket_descriptor = &socket_descriptor;
+    open_socket(INPORT, &data);
+
+    socklen_t sin_size;
     printf("server: waiting for connections.\n");
 
     for(;;) { // Main accept() loop.
 
-        sin_size = sizeof their_address;
-        new_descriptor = accept(socket_descriptor,
-                                (struct sockaddr * )&their_address,
+        sin_size = sizeof data.their_address;
+        new_socket_descriptor = accept(*data.socket_descriptor,
+                                (struct sockaddr * )data.their_address,
                                 &sin_size);
 
-        if (new_descriptor == -1) { // Error in accept()
+        if (new_socket_descriptor == -1) { // Error in accept()
             perror("accept");
             continue;
         }
 
-        inet_ntop(their_address.ss_family,
-                  get_in_address((struct sockaddr *)&their_address),
-                  string_buffer,
-                  sizeof string_buffer);
+        inet_ntop(data.their_address->ss_family,
+                  get_in_address((struct sockaddr *)data.their_address),
+                  data.string_buffer,
+                  sizeof data.string_buffer);
 
-        printf("server: got connection from %s\n", string_buffer);
+        printf("server: got connection from %s\n", data.string_buffer);
     }
+}
+
+
+int main(void)
+{
+    pthread_t receive = {0};
+    pthread_create(&receive, NULL, receive_work_function, NULL);
+    pthread_join(receive, NULL);
 }
