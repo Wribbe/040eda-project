@@ -17,6 +17,16 @@
 
 #define BACKLOG 10
 
+#include <stddef.h>
+#include <sys/sysinfo.h>
+#include <sys/time.h>
+#include "capture.h"
+
+#define TEN_TO_NINE 1000000000
+#define TEN_TO_SIX 1000000
+#define TIMESTAMP_POS 25
+#define TIME_ARRAY_SIZE 8
+
 void * get_in_address(struct sockaddr * sa) {
     if (sa->sa_family == AF_INET) {
         return &(((struct sockaddr_in * )sa)->sin_addr);
@@ -119,7 +129,52 @@ void * receive_work_function(void * input_data)
     open_socket(INPORT, &data);
 
     socklen_t sin_size;
-    printf("server: waiting for connections.\n");
+    printf("server: waiting for connections on port: %s.\n", INPORT);
+
+    for(;;) { // Main accept() loop.
+
+        sin_size = sizeof data.their_address;
+        new_socket_descriptor = accept(*data.socket_descriptor,
+                                (struct sockaddr * )data.their_address,
+                                &sin_size);
+
+        if (new_socket_descriptor == -1) { // Error in accept()
+            perror("accept");
+            continue;
+        }
+
+        inet_ntop(data.their_address->ss_family,
+                  get_in_address((struct sockaddr *)data.their_address),
+                  data.string_buffer,
+                  sizeof data.string_buffer);
+
+        printf("server: got connection from %s\n", data.string_buffer);
+
+        char message[] = "HELLO CLIENT!";
+        int status = send(new_socket_descriptor, message, sizeof(message), 0);
+        if (status == -1) {
+            perror("send");
+        }
+    }
+}
+
+void * send_work_function(void * input_data)
+{
+
+    // Get new empty socket data struct.
+
+    int socket_descriptor = 0;
+    int new_socket_descriptor = 0;
+
+    struct socket_data data = {0};
+    struct sockaddr_storage their_address;
+
+    data.their_address = &their_address;
+    data.socket_descriptor = &socket_descriptor;
+    open_socket(INPORT, &data);
+
+    socklen_t sin_size;
+    printf("server: waiting to send on port: %s.\n", OUTPORT);
 
     for(;;) { // Main accept() loop.
 
