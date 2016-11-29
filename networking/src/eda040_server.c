@@ -139,6 +139,12 @@ void * receive_work_function(void * input_data)
                   sizeof data.string_buffer);
 
         printf("server: got connection from %s\n", data.string_buffer);
+
+        char message[] = "HELLO CLIENT!";
+        int status = send(new_socket_descriptor, message, sizeof(message), 0);
+        if (status == -1) {
+            perror("send");
+        }
     }
 }
 
