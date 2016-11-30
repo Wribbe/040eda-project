@@ -19,6 +19,7 @@
 #include <sys/sysinfo.h>
 #include <sys/time.h>
 #include "capture.h"
+#include "net_data.h"
 
 #define TEN_TO_NINE 1000000000
 #define TEN_TO_SIX 1000000
@@ -112,7 +113,7 @@ void open_socket(const char * PORT, struct socket_data * socket_data) {
 
 }
 
-void * receive_work_function(void * input_data)
+void * receive_work_function (void * input_data)
 {
 
     // Unpack input_data.
@@ -139,14 +140,15 @@ void * receive_work_function(void * input_data)
                   get_in_address((struct sockaddr *)data->their_address),
                   data->string_buffer,
                   data->sizeof_string_buffer);
-
-//        printf("server: got connection from %s\n", data->string_buffer);
+        printf("server: got connection from %s\n", data->string_buffer);
 //
-//        char message[] = "HELLO CLIENT!";
-//        int status = send(new_socket_descriptor, message, sizeof(message), 0);
-//        if (status == -1) {
-//            perror("send");
-//        }
+        char message[] = "HELLO CLIENT!";
+        struct data_packet packet_to_send = {0};
+        packet_to_send.message = message;
+        int status = send(new_socket_descriptor, &packet_to_send, MAX_DATA_SIZE, 0);
+        if (status == -1) {
+            perror("send");
+        }
     }
 }
 
