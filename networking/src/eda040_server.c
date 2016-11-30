@@ -11,6 +11,8 @@
 #include <sys/wait.h>
 #include <signal.h>
 #include <pthread.h>
+#include <netinet/in.h>
+#include <inttypes.h>
 
 #define OUR_PORT "3490"
 #define BACKLOG 10
@@ -25,6 +27,8 @@
 #define TEN_TO_SIX 1000000
 #define TIMESTAMP_POS 25
 #define TIME_ARRAY_SIZE 8
+
+#define SIZE(x) sizeof(x)/sizeof(x[0])
 
 void * get_in_address(struct sockaddr * sa) {
     if (sa->sa_family == AF_INET) {
@@ -142,10 +146,11 @@ void * receive_work_function (void * input_data)
                   data->sizeof_string_buffer);
         printf("server: got connection from %s\n", data->string_buffer);
 //
-        char message[] = "HELLO CLIENT!";
-        struct data_packet packet_to_send = {0};
-        packet_to_send.message = message;
-        int status = send(new_socket_descriptor, &packet_to_send, MAX_DATA_SIZE, 0);
+        uint32_t message[] = { htonl(0x00), htonl(0x01), htonl(0xff) };
+        size_t size = SIZE(message);
+        message[0] = htonl(size);
+        printf("size: %zu\n", size);
+        int status = send(new_socket_descriptor, &message, MAX_DATA_SIZE, 0);
         if (status == -1) {
             perror("send");
         }

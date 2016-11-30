@@ -8,6 +8,8 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
+#include <netinet/in.h>
+#include <inttypes.h>
 
 #define PORT "3490"
 
@@ -103,9 +105,12 @@ int main(int argc, char * argv[]) {
         exit(1);
     }
 
-    struct data_packet * received_data = (struct data_packet * )data_buffer;
-
-    printf("Client received: %s\n", received_data->message);
+    uint32_t * message = (uint32_t * )data_buffer;
+    uint32_t array_size = ntohl(*message);
+    printf("Size of array: %" PRIu32 "\n", array_size);
+    for( uint32_t i = 1; i<array_size; i++) {
+        printf("number @ [%" PRIu32 "] = %" PRIu32 ".\n", i, ntohl(message[i]));
+    }
 
     close(socket_descriptor);
 
