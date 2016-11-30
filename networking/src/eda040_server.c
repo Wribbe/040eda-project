@@ -12,9 +12,7 @@
 #include <signal.h>
 #include <pthread.h>
 
-#define INPORT "3490"
-#define OUTPORT "3491"
-
+#define OUR_PORT "3490"
 #define BACKLOG 10
 
 #include <stddef.h>
@@ -39,8 +37,10 @@ struct socket_data {
     int * socket_descriptor;
     struct addrinfo hints;
     struct sockaddr_storage * their_address;
+    size_t sizeof_their_address;
     struct addrinfo * current;
     char string_buffer[INET6_ADDRSTRLEN];
+    size_t sizeof_string_buffer;
 };
 
 void open_socket(const char * PORT, struct socket_data * socket_data) {
@@ -112,30 +112,22 @@ void open_socket(const char * PORT, struct socket_data * socket_data) {
 
 }
 
-
 void * receive_work_function(void * input_data)
 {
 
-    // Get new empty socket data struct.
-
-    int socket_descriptor = 0;
-    int new_socket_descriptor = 0;
-
-    struct socket_data data = {0};
-    struct sockaddr_storage their_address;
-
-    data.their_address = &their_address;
-    data.socket_descriptor = &socket_descriptor;
-    open_socket(INPORT, &data);
+    // Unpack input_data.
+    struct socket_data * data = (struct socket_data * )input_data;
 
     socklen_t sin_size;
-    printf("server: waiting for connections on port: %s.\n", INPORT);
+    printf("server: waiting for connections on port: %s.\n", OUR_PORT);
+
+    int new_socket_descriptor = 0;
 
     for(;;) { // Main accept() loop.
 
-        sin_size = sizeof data.their_address;
-        new_socket_descriptor = accept(*data.socket_descriptor,
-                                (struct sockaddr * )data.their_address,
+        sin_size = data->sizeof_their_address;
+        new_socket_descriptor = accept(*data->socket_descriptor,
+                                (struct sockaddr * )data->their_address,
                                 &sin_size);
 
         if (new_socket_descriptor == -1) { // Error in accept()
@@ -143,70 +135,75 @@ void * receive_work_function(void * input_data)
             continue;
         }
 
-        inet_ntop(data.their_address->ss_family,
-                  get_in_address((struct sockaddr *)data.their_address),
-                  data.string_buffer,
-                  sizeof data.string_buffer);
+        inet_ntop(data->their_address->ss_family,
+                  get_in_address((struct sockaddr *)data->their_address),
+                  data->string_buffer,
+                  data->sizeof_string_buffer);
 
-        printf("server: got connection from %s\n", data.string_buffer);
-
-        char message[] = "HELLO CLIENT!";
-        int status = send(new_socket_descriptor, message, sizeof(message), 0);
-        if (status == -1) {
-            perror("send");
-        }
+//        printf("server: got connection from %s\n", data->string_buffer);
+//
+//        char message[] = "HELLO CLIENT!";
+//        int status = send(new_socket_descriptor, message, sizeof(message), 0);
+//        if (status == -1) {
+//            perror("send");
+//        }
     }
 }
 
-void * send_work_function(void * input_data)
-{
-
-    // Get new empty socket data struct.
-
-    int socket_descriptor = 0;
-    int new_socket_descriptor = 0;
-
-    struct socket_data data = {0};
-    struct sockaddr_storage their_address;
-
-    data.their_address = &their_address;
-    data.socket_descriptor = &socket_descriptor;
-    open_socket(INPORT, &data);
-
-    socklen_t sin_size;
-    printf("server: waiting to send on port: %s.\n", OUTPORT);
-
-    for(;;) { // Main accept() loop.
-
-        sin_size = sizeof data.their_address;
-        new_socket_descriptor = accept(*data.socket_descriptor,
-                                (struct sockaddr * )data.their_address,
-                                &sin_size);
-
-        if (new_socket_descriptor == -1) { // Error in accept()
-            perror("accept");
-            continue;
-        }
-
-        inet_ntop(data.their_address->ss_family,
-                  get_in_address((struct sockaddr *)data.their_address),
-                  data.string_buffer,
-                  sizeof data.string_buffer);
-
-        printf("server: got connection from %s\n", data.string_buffer);
-
-        char message[] = "HELLO CLIENT!";
-        int status = send(new_socket_descriptor, message, sizeof(message), 0);
-        if (status == -1) {
-            perror("send");
-        }
-    }
-}
+//void * send_work_function(void * input_data)
+//{
+//
+//    socklen_t sin_size;
+//    printf("server: waiting to send on port: %s.\n", OUR_PORT);
+//
+//    for(;;) { // Main accept() loop.
+//
+//        sin_size = sizeof data.their_address;
+//        new_socket_descriptor = accept(*data.socket_descriptor,
+//                                (struct sockaddr * )data.their_address,
+//                                &sin_size);
+//
+//        if (new_socket_descriptor == -1) { // Error in accept()
+//            perror("accept");
+//            continue;
+//        }
+//
+//        inet_ntop(data.their_address->ss_family,
+//                  get_in_address((struct sockaddr *)data.their_address),
+//                  data.string_buffer,
+//                  sizeof data.string_buffer);
+//
+//        printf("server: got connection from %s\n", data.string_buffer);
+//
+//        char message[] = "HELLO CLIENT!";
+//        int status = send(new_socket_descriptor, message, sizeof(message), 0);
+//        if (status == -1) {
+//            perror("send");
+//        }
+//    }
+//}
 
 
 int main(void)
 {
+    // Create socket;
+    int socket_descriptor = 0;
+
+    struct socket_data data = {0};
+    struct sockaddr_storage their_address;
+
+    data.their_address = &their_address;
+    data.sizeof_their_address = sizeof(data.their_address);
+    data.sizeof_string_buffer = sizeof(data.string_buffer);
+    data.socket_descriptor = &socket_descriptor;
+    open_socket(OUR_PORT, &data);
+
     pthread_t receive = {0};
-    pthread_create(&receive, NULL, receive_work_function, NULL);
+    pthread_create(&receive, NULL, receive_work_function, &data);
+
+//    pthread_t send = {0};
+//    pthread_create(&send, NULL, send_work_function, NULL);
     pthread_join(receive, NULL);
+
+//    pthread_join(send, NULL);
 }
