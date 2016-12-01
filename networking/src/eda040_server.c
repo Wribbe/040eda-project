@@ -46,6 +46,13 @@ struct socket_data {
     struct addrinfo * current;
     char string_buffer[INET6_ADDRSTRLEN];
     size_t sizeof_string_buffer;
+    int new_descriptor;
+};
+
+struct data_node
+{
+    uint32_t size;
+    uint32_t * data;
 };
 
 void open_socket(const char * PORT, struct socket_data * socket_data) {
@@ -117,16 +124,21 @@ void open_socket(const char * PORT, struct socket_data * socket_data) {
 
 }
 
+struct data_node * receive_list = NULL;
+struct data_node * send_list = NULL;
+
+int fake_lock = 1;
+
 void * receive_work_function (void * input_data)
 {
-
     // Unpack input_data.
     struct socket_data * data = (struct socket_data * )input_data;
 
     socklen_t sin_size;
-    printf("server: waiting for connections on port: %s.\n", OUR_PORT);
+    printf("server: waiting for data on port: %s.\n", OUR_PORT);
 
     int new_socket_descriptor = 0;
+    int numbytes = 0;
 
     for(;;) { // Main accept() loop.
 
@@ -140,56 +152,91 @@ void * receive_work_function (void * input_data)
             continue;
         }
 
+        // Store descriptor for use in the other thread.
+        printf("socket: %d\n", new_socket_descriptor);
+        ((struct socket_data *)input_data)->new_descriptor = new_socket_descriptor;
+
         inet_ntop(data->their_address->ss_family,
                   get_in_address((struct sockaddr *)data->their_address),
                   data->string_buffer,
                   data->sizeof_string_buffer);
-        printf("server: got connection from %s\n", data->string_buffer);
-//
-        uint32_t message[] = { htonl(0x00), htonl(0x01), htonl(0xff) };
-        size_t size = SIZE(message);
-        message[0] = htonl(size);
-        printf("size: %zu\n", size);
-        int status = send(new_socket_descriptor, &message, MAX_DATA_SIZE, 0);
-        if (status == -1) {
-            perror("send");
+        printf("server: got data from %s\n", data->string_buffer);
+
+        fake_lock = 1;
+
+        uint32_t data_buffer[MAX_DATA_SIZE];
+
+        numbytes = recv(new_socket_descriptor,
+                        data_buffer,
+                        MAX_DATA_SIZE,
+                        0);
+
+        if (numbytes == -1) {
+            perror("recv");
+            exit(1);
         }
+
+        uint32_t * data_pointer = (uint32_t * )data_buffer;
+        uint32_t data_size = ntohl(*data_pointer);
+
+        uint32_t * data = malloc(sizeof(uint32_t)*data_size);
+        // Convert received data.
+        for (uint32_t i = 0; i < data_size; i++) {
+            data[i] = ntohl(data_pointer[1+i]);
+        }
+
+        for (uint32_t i = 0; i < data_size-1; i++) {
+            printf("received data [%" PRIu32 "] = %" PRIu32 ".\n", i, data[i]);
+        }
+
+        struct data_node * node = malloc(sizeof(struct data_node));
+        node->size = data_size;
+        node->data = data;
+
+        send_list = node;
+
+        fake_lock = 0;
     }
 }
 
-//void * send_work_function(void * input_data)
-//{
-//
-//    socklen_t sin_size;
-//    printf("server: waiting to send on port: %s.\n", OUR_PORT);
-//
-//    for(;;) { // Main accept() loop.
-//
-//        sin_size = sizeof data.their_address;
-//        new_socket_descriptor = accept(*data.socket_descriptor,
-//                                (struct sockaddr * )data.their_address,
-//                                &sin_size);
-//
-//        if (new_socket_descriptor == -1) { // Error in accept()
-//            perror("accept");
-//            continue;
-//        }
-//
-//        inet_ntop(data.their_address->ss_family,
-//                  get_in_address((struct sockaddr *)data.their_address),
-//                  data.string_buffer,
-//                  sizeof data.string_buffer);
-//
-//        printf("server: got connection from %s\n", data.string_buffer);
-//
-//        char message[] = "HELLO CLIENT!";
-//        int status = send(new_socket_descriptor, message, sizeof(message), 0);
-//        if (status == -1) {
-//            perror("send");
-//        }
-//    }
-//}
+void * send_work_function (void * input_data)
+{
+    // Unpack input_data.
+    struct socket_data * data = (struct socket_data * )input_data;
 
+    for(;;) { // waiting for data loop.
+
+        if (!fake_lock && send_list != NULL) {
+
+            // Use socket descriptor from receive thread.
+            int new_socket_descriptor = data->new_descriptor;
+
+            struct data_node * current = send_list;
+
+            uint32_t data_size = current->size;
+            uint32_t send_data[data_size+1]; // Leave room for length in front.
+
+            uint32_t * data_to_be_sent = current->data;
+            printf("data_to_bes_sent[0]: %" PRIu32 ".\n", data_to_be_sent[0]);
+            // Add size to send_data.
+            send_data[0] = htonl(data_size);
+            // Add rest of data to send_data.
+            for (uint32_t i = 0; i < data_size; i++) {
+                send_data[i+1] = htonl(data_to_be_sent[i]);
+                printf("Packing data: %" PRIu32 " as :%" PRIu32 ".\n", data_to_be_sent[i], send_data[i+1]);
+            }
+            // Send data.
+            printf("Sending data of data_size: %" PRIu32 ".\n", data_size+1);
+            printf("data_size in storage: %" PRIu32 " converted: %" PRIu32 ".\n", send_data[0], ntohl(send_data[0]));
+            int status = send(new_socket_descriptor, send_data, (data_size+1)*sizeof(uint32_t), 0);
+            if (status == -1) {
+                perror("send");
+            }
+
+            fake_lock = 1;
+        }
+    }
+}
 
 int main(void)
 {
@@ -208,9 +255,8 @@ int main(void)
     pthread_t receive = {0};
     pthread_create(&receive, NULL, receive_work_function, &data);
 
-//    pthread_t send = {0};
-//    pthread_create(&send, NULL, send_work_function, NULL);
+    pthread_t send = {0};
+    pthread_create(&send, NULL, send_work_function, &data);
     pthread_join(receive, NULL);
-
-//    pthread_join(send, NULL);
+    pthread_join(send, NULL);
 }

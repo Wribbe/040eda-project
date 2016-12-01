@@ -15,6 +15,8 @@
 
 #include "net_data.h"
 
+#define SIZE(x) sizeof(x)/sizeof(x[0])
+
 void * get_in_address(struct sockaddr * sa) {
     void * return_pointer;
     if (sa->sa_family == AF_INET) {
@@ -25,11 +27,35 @@ void * get_in_address(struct sockaddr * sa) {
     return return_pointer;
 }
 
+uint32_t string_to_bits(const char * string) {
+    // Convert string to bit pattern in a uint32_t value.
+    const char * c = string;
+    uint32_t result = 0;
+    size_t loops = 0;
+    size_t max_loops = sizeof(uint32_t)*8;
+    while (*c != '\0') {
+        if (loops > max_loops) { // Don't exceed bit size.
+            break;
+        }
+        if (loops > 0) {
+            result <<= 1;
+        }
+        switch(*c) {
+            case '1': result += 1; break;
+            default: break;
+        }
+        loops++;
+        // Advance pointer.
+        c++;
+    }
+    return result;
+}
+
 int main(int argc, char * argv[]) {
 
     int socket_descriptor = 0;
     int numbytes = 0;
-    char data_buffer[MAX_DATA_SIZE];
+    uint32_t data_buffer[MAX_DATA_SIZE];
 
     struct addrinfo hints = {0};
     struct addrinfo * serverinfo;
@@ -94,7 +120,34 @@ int main(int argc, char * argv[]) {
     printf("Connecting to: %s\n", address_buffer);
 
     freeaddrinfo(serverinfo); // All done with this struct.
+    // Connection complete.
 
+    // Send 101110.
+    uint32_t converted_number = string_to_bits("101");
+    printf("Sending: %" PRIu32 "\n", converted_number);
+    uint32_t send_data[] = {
+        0xff, // Reserved for the size.
+        htonl(converted_number),
+    };
+
+    // Set data size as first parameter.
+    send_data[0] = htonl(SIZE(send_data)-1);
+
+    printf("size of send_data: %zu\n", sizeof(send_data));
+
+    // Send data package.
+    int send_status = send(socket_descriptor,
+                           &send_data,
+                           sizeof(send_data),
+                           0);
+
+    // Check status of send.
+    if (send_status == -1) {
+        perror("send");
+    }
+
+    // Receive data.
+    printf("Waiting for data.\n");
     numbytes = recv(socket_descriptor,
                     data_buffer,
                     MAX_DATA_SIZE-1,
@@ -105,11 +158,14 @@ int main(int argc, char * argv[]) {
         exit(1);
     }
 
+    printf("Got data, num_bytes = %d.\n", numbytes);
+
     uint32_t * message = (uint32_t * )data_buffer;
     uint32_t array_size = ntohl(*message);
     printf("Size of array: %" PRIu32 "\n", array_size);
-    for( uint32_t i = 1; i<array_size; i++) {
-        printf("number @ [%" PRIu32 "] = %" PRIu32 ".\n", i, ntohl(message[i]));
+    printf("Size of array unconverted: %" PRIu32 "\n", *message);
+    for( uint32_t i = 0; i<array_size; i++) {
+        printf("number @ [%" PRIu32 "] = %" PRIu32 ".\n", i, ntohl(message[i+1]));
     }
 
     close(socket_descriptor);
