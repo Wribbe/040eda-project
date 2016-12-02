@@ -31,7 +31,7 @@ embed_include := -I$(emb_comp_base_dir)/mipsisa32r2el-axis-linux-gnu/sys-include
 # Commands that add/remove files.
 .PHONY: all embed emb both clean
 # Utility commands.
-.PHONY:	embed_mkdirs mkdirs change_to_embedded
+.PHONY:	embed_mkdirs mkdirs change_to_embedded serv
 
 all: $(executables)
 
@@ -42,6 +42,12 @@ both: all embed
 
 push: embed
 	./push_to_camera.sh
+
+serv: both
+	./$(dir_executables)/eda040_server
+
+cli: both
+	./$(dir_executables)/eda040_client localhost
 
 change_to_embedded:
 	$(eval CC = $(emb_bin)/mipsisa32r2el-axis-linux-gnu-gcc)
