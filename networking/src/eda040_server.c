@@ -43,10 +43,8 @@ struct socket_data {
     int * new_socket_descriptor;
     struct sockaddr_storage * their_address;
     size_t sizeof_their_address;
-    char string_buffer[INET6_ADDRSTRLEN];
-    size_t sizeof_string_buffer;
     pthread_cond_t * data_to_send_sig;
-    pthread_cond_t * data_to_receive_sig;
+    pthread_cond_t * data_was_received_sig;
     pthread_mutex_t * data_mutex;
 };
 
@@ -54,7 +52,13 @@ struct data_node
 {
     uint32_t size;
     uint32_t * data;
+    struct data_node * next;
 };
+
+struct data_node * receive_list = NULL;
+struct data_node * receive_last = NULL;
+struct data_node * send_list = NULL;
+struct data_node * send_last = NULL;
 
 void open_socket(const char * PORT, struct socket_data * socket_data) {
 
@@ -126,28 +130,56 @@ void open_socket(const char * PORT, struct socket_data * socket_data) {
 
 }
 
-struct data_node * receive_list = NULL;
-struct data_node * send_list = NULL;
-
 int fake_lock = 1;
+
 
 void * receive_work_function (void * input_data)
 {
     // Unpack input_data.
-    struct socket_data * data = (struct socket_data * )input_data;
-
-    int new_socket_descriptor = *data->new_socket_descriptor;
+    struct socket_data * thread_data = (struct socket_data * )input_data;
     int numbytes = 0;
+    int new_socket_descriptor = 0;
+    int temp_socket_descriptor = 0;
+    int socket_descriptor = 0;
+    char client_address_buffer[INET6_ADDRSTRLEN];
+
+    struct sockaddr_storage their_address = {0};
+
+    const char * function_tag = "[RECEIVE]:";
+
+    // Get the values from shared data.
+    pthread_mutex_lock(thread_data->data_mutex);
+
+    socket_descriptor = *(thread_data->socket_descriptor);
+    // Copy their address locally.
+    memcpy(&their_address,
+           thread_data->their_address,
+           thread_data->sizeof_their_address);
+
+    pthread_mutex_unlock(thread_data->data_mutex);
 
     for(;;) { // Main accept() loop.
 
-        inet_ntop(data->their_address->ss_family,
-                  get_in_address((struct sockaddr *)data->their_address),
-                  data->string_buffer,
-                  data->sizeof_string_buffer);
-        printf("server: got data from %s\n", data->string_buffer);
+        // Accept and get a new connection.
+        printf("%s waiting for data on port: %s.\n", function_tag, OUR_PORT);
 
-        fake_lock = 1;
+        // This is a blocking call.
+        socklen_t sin_size = sizeof(their_address);
+        temp_socket_descriptor= accept(socket_descriptor,
+                                       (struct sockaddr * )&their_address,
+                                       &sin_size);
+
+        // Populate shared data with new socket descriptor.
+        pthread_mutex_lock(thread_data->data_mutex);
+        new_socket_descriptor = temp_socket_descriptor;
+        thread_data->new_socket_descriptor = &new_socket_descriptor;
+        pthread_mutex_unlock(thread_data->data_mutex);
+
+        inet_ntop(their_address.ss_family,
+                  get_in_address((struct sockaddr *)&their_address),
+                  client_address_buffer,
+                  sizeof(client_address_buffer));
+        printf("%s got data from %s\n", function_tag, client_address_buffer);
 
         uint32_t data_buffer[MAX_DATA_SIZE];
 
@@ -164,23 +196,47 @@ void * receive_work_function (void * input_data)
         uint32_t * data_pointer = (uint32_t * )data_buffer;
         uint32_t data_size = ntohl(*data_pointer);
 
-        uint32_t * data = malloc(sizeof(uint32_t)*data_size);
+        uint32_t * converted_data = malloc(sizeof(uint32_t)*data_size);
         // Convert received data.
         for (uint32_t i = 0; i < data_size; i++) {
-            data[i] = ntohl(data_pointer[1+i]);
+            converted_data[i] = ntohl(data_pointer[1+i]);
         }
 
+        // Information about data.
         for (uint32_t i = 0; i < data_size-1; i++) {
-            printf("received data [%" PRIu32 "] = %" PRIu32 ".\n", i, data[i]);
+            printf("%s received data [%" PRIu32 "] = %" PRIu32 ".\n",
+                   function_tag,
+                   i,
+                   converted_data[i]);
         }
 
+        // Create new node for the receive list.
         struct data_node * node = malloc(sizeof(struct data_node));
+
+        // Populate the node.
         node->size = data_size;
-        node->data = data;
+        node->data = converted_data;
+        node->next = NULL;
 
-        send_list = node;
+        // Lock data_mutex.
+        pthread_mutex_lock(thread_data->data_mutex);
 
-        fake_lock = 0;
+        // Make new list or append.
+        if (receive_list == NULL) { // New node.
+            receive_list = node;
+            receive_last = node;
+        } else { // Append to last.
+            receive_last->next = node;
+            receive_last = receive_last->next;
+        }
+
+        // Signal that data was received.
+        pthread_cond_signal(thread_data->data_was_received_sig);
+
+        // Unlock the mutex.
+        pthread_mutex_unlock(thread_data->data_mutex);
+
+        printf("%s Put data in receive queue.\n", function_tag);
     }
 }
 
@@ -189,50 +245,62 @@ void * send_work_function (void * input_data)
     // Unpack input_data.
     struct socket_data * data = (struct socket_data * )input_data;
 
+    const char * function_tag = "[SEND]:";
+
+    // lock data mutex.
+    pthread_mutex_lock(data->data_mutex);
+
     for(;;) { // waiting for data loop.
 
-        if (!fake_lock && send_list != NULL) {
-
-            // Use socket descriptor from receive thread.
-            int new_socket_descriptor = *data->new_socket_descriptor;
-
-            struct data_node * current = send_list;
-
-            uint32_t data_size = current->size;
-            uint32_t send_data[data_size+1]; // Leave room for length in front.
-
-            uint32_t * data_to_be_sent = current->data;
-            printf("data_to_bes_sent[0]: %" PRIu32 ".\n", data_to_be_sent[0]);
-            // Add size to send_data.
-            send_data[0] = htonl(data_size);
-            // Add rest of data to send_data.
-            for (uint32_t i = 0; i < data_size; i++) {
-                send_data[i+1] = htonl(data_to_be_sent[i]);
-                printf("Packing data: %" PRIu32 " as :%" PRIu32 ".\n", data_to_be_sent[i], send_data[i+1]);
-            }
-            // Send data.
-            printf("Sending data of data_size: %" PRIu32 ".\n", data_size+1);
-            printf("data_size in storage: %" PRIu32 " converted: %" PRIu32 ".\n", send_data[0], ntohl(send_data[0]));
-            int status = send(new_socket_descriptor, send_data, (data_size+1)*sizeof(uint32_t), 0);
-            if (status == -1) {
-                perror("send");
-            }
-
-            fake_lock = 1;
+        if (send_list == NULL) { // Sleep, nothing to send.
+            printf("%s Wait for data.\n", function_tag);
+            pthread_cond_wait(data->data_to_send_sig, data->data_mutex);
         }
-    }
-}
 
-int accept_on_socket(struct socket_data * data)
-{
-    /* Run accept on the data in struct socket_data, return the new socket
-     * descriptor.
-     * */
-    socklen_t sin_size = data->sizeof_their_address;
-    int new_socket_descriptor = accept(*data->socket_descriptor,
-                                       (struct sockaddr * )data->their_address,
-                                       &sin_size);
-    return new_socket_descriptor;
+        // Has lock here if awoken.
+        printf("%s There is data!\n", function_tag);
+
+        // Use socket descriptor from receive thread.
+        int new_socket_descriptor = *data->new_socket_descriptor;
+
+        struct data_node * current = send_list;
+
+        uint32_t data_size = current->size;
+        uint32_t send_data[data_size+1]; // Leave room for length in front.
+
+        uint32_t * data_to_be_sent = current->data;
+        send_data[0] = htonl(data_size);
+        // Add rest of data to send_data.
+        for (uint32_t i = 0; i < data_size; i++) {
+            send_data[i+1] = htonl(data_to_be_sent[i]);
+            printf("%s packing data: %" PRIu32 " as :%" PRIu32 ".\n",
+                   function_tag,
+                   data_to_be_sent[i],
+                   send_data[i+1]);
+        }
+        // Send data.
+        printf("%s sending data of data_size: %" PRIu32 ".\n",
+               function_tag,
+               data_size+1);
+        int status = send(new_socket_descriptor, send_data, (data_size+1)*sizeof(uint32_t), 0);
+        if (status == -1) {
+            perror("send");
+        }
+
+        // Advance the list pointer.
+        send_list = current->next;
+
+        if (send_list == NULL) { // Make sure that last does not point to free'd data.
+            send_last = NULL;
+        }
+
+        // Free the current element.
+        free(current->data);
+        free(current);
+
+        // Loop until the list is done.
+        printf("%s data sent.\n", function_tag);
+    }
 }
 
 int main(void)
@@ -243,44 +311,63 @@ int main(void)
     struct socket_data data = {0};
     struct sockaddr_storage their_address;
 
+    const char * function_tag = "[MAIN]:";
+
     // Create data lock.
     pthread_mutex_t data_mutex = PTHREAD_MUTEX_INITIALIZER;
 
     // Create signals.
     pthread_cond_t data_to_send_sig = PTHREAD_COND_INITIALIZER;
-    pthread_cond_t data_to_receive_sig = PTHREAD_COND_INITIALIZER;
+    pthread_cond_t data_was_received_sig = PTHREAD_COND_INITIALIZER;
 
     // Populate the socket_data struct with concurrency objects.
     data.data_to_send_sig = &data_to_send_sig;
-    data.data_to_send_sig = &data_to_receive_sig;
+    data.data_was_received_sig = &data_was_received_sig;
     data.data_mutex = &data_mutex;
 
     // Populate the socket_data with data related to socket communication.
     data.their_address = &their_address;
-    data.sizeof_their_address = sizeof(data.their_address);
-    data.sizeof_string_buffer = sizeof(data.string_buffer);
     data.socket_descriptor = &socket_descriptor;
     open_socket(OUR_PORT, &data);
 
-    // Accept and get a new connection.
-    printf("server: waiting for data on port: %s.\n", OUR_PORT);
-
-    int new_socket_descriptor = accept_on_socket(&data);
-    while (new_socket_descriptor == -1) {
-        perror("accept");
-        new_socket_descriptor = accept_on_socket(&data);
-    }
-
-    // Populate data with new socket.
-    data.new_socket_descriptor = &new_socket_descriptor;
-
     // Create and run receive thread, populates data necessary for send thread.
+    printf("%s Created thread for receiving data.\n", function_tag);
     pthread_t receive = {0};
     pthread_create(&receive, NULL, receive_work_function, &data);
 
     // Create and run send thread.
+    printf("%s Created thread for sending data.\n", function_tag);
     pthread_t send = {0};
     pthread_create(&send, NULL, send_work_function, &data);
+
+    // Take data mutex.
+    pthread_mutex_lock(&data_mutex);
+
+    for(;;) { // Main loop data-processing loop.
+        if (receive_list == NULL) { // Nothing to process.
+            pthread_cond_wait(&data_was_received_sig, &data_mutex);
+        }
+
+        // Move received data to send queue for the time being.
+        if (send_list == NULL) {
+            send_list = receive_list;
+            send_last = send_list;
+        } else { // Already populated.
+            // Append first of receive_list to send_list.
+            send_last->next = receive_list;
+            // Move the send_last pointer.
+            send_last = send_last->next;
+            // Unlink the moved nodes next pointer.
+            send_last->next = NULL;
+        }
+        // Advance the receive_list pointer.
+        receive_list = receive_list->next;
+
+        // Signal the send thread.
+        pthread_cond_signal(&data_to_send_sig);
+
+        printf("%s Moved data from receive to send queue.\n", function_tag);
+    }
 
     // Join threads.
     pthread_join(receive, NULL);
