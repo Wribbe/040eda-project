@@ -3,9 +3,11 @@ dir_objects = objects
 dir_emb_objects := $(dir_objects)/embedded
 dir_executables = executables
 dir_emb_executables := $(dir_executables)/embedded
+dir_libfolders := ./lib ./lib/embedded
+dir_include := include
 
 # Embedded compiler variables.
-emb_comp_base_dir := $(shell pwd)/comptools-mips-r12_1.2-0/comptools-mips-r12_1.2-0_amd64/mipsisa32r2el/r12
+emb_comp_base_dir := $(shell pwd)/data/comptools-mips-r12_1.2-0/comptools-mips-r12_1.2-0_amd64/mipsisa32r2el/r12
 emb_bin := $(emb_comp_base_dir)/bin
 
 CC := gcc
@@ -23,10 +25,15 @@ objects = $(sources:.c=.o)
 executables = $(foreach filename,$(sources:.c=),$(dir_executables)/$(filename))
 emb_executables = $(foreach filename,$(sources:.c=),$(dir_emb_executables)/$(filename))
 
-my_flags := -Wall -Wextra -pedantic -std=gnu99 -Wwrite-strings -g
-libraries := -lpthread -pthread
-FLAGS := $(libraries) $(my_flags) $(CFLAGS) -I.
-embed_include := -I$(emb_comp_base_dir)/mipsisa32r2el-axis-linux-gnu/sys-include -I.
+libdir_flags := $(foreach lib_folder,$(dir_libfolders),-L$(lib_folder))
+libraries := -lpthread -pthread -lcapture -ljpeg
+embed_libraries := -lpthread -pthread -lrapp -lcapture
+embed_include := -I$(emb_comp_base_dir)/mipsisa32r2el-axis-linux-gnu/sys-include
+linker_flags := -Wl,-rpath=./lib
+
+my_flags := -Wall -Wextra -pedantic -std=gnu99 -Wwrite-strings -g $(libdir_flags) -I./include
+FLAGS := $(libraries) $(my_flags) $(CFLAGS)
+
 
 # Commands that add/remove files.
 .PHONY: all embed emb both clean
@@ -51,7 +58,7 @@ cli: both
 
 change_to_embedded:
 	$(eval CC = $(emb_bin)/mipsisa32r2el-axis-linux-gnu-gcc)
-	$(eval FLAGS = $(libraries) $(my_flags) $(CFLAGS) $(embed_include))
+	$(eval FLAGS = $(embed_libraries) $(my_flags) $(CFLAGS) $(embed_include))
 
 mkdirs:
 	$(call conditional_mkdir,$(dir_objects))
@@ -69,14 +76,18 @@ clean:
 # Regular executables.
 %.o : %.c | mkdirs
 	$(CC) -c $(FLAGS) $< -o $(dir_objects)/$@
+	@echo
 
 $(dir_executables)/% : %.o
-	$(CC) $(FLAGS) $(dir_objects)/$< -o $@
+	$(CC) $(linker_flags) $(FLAGS) $(dir_objects)/$< -o $@
+	@echo
 
 # Embedded executables.
 $(dir_emb_objects)/%.o : %.c | mkdirs embed_mkdirs
 	$(CC) -c $(FLAGS) $< -o $@
+	@echo
 
 $(dir_emb_executables)/% : objects/embedded/%.o
-	$(CC) $(FLAGS) $< -o $@
+	$(CC) $(FLAGS) $(libdir_flags) $< -o $@
+	@echo
 
