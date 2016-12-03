@@ -23,7 +23,7 @@
  *
  * \subsection img_jpg IMAGE_JPEG
  * For JPEG images the \c media_props argument accepts the same kind of parameters
- * as specified in the VAPIX. 
+ * as specified in the VAPIX.
  *
  * Read more at http://www.axis.com/techsup/cam_servers/dev/cam_http_api_2.php#api_blocks_image_video_mjpg_video
  *
@@ -204,7 +204,7 @@
    media_stream *stream;
    capture_time timestamp;
 
-   stream = capture_open_stream(IMAGE_JPEG, "capture-cameraIP=\<IP\>&capture-userpass=\<user\>:\<password\>sdk_format=Y800&&resolution=176x144&fps=1"); 	 
+   stream = capture_open_stream(IMAGE_JPEG, "capture-cameraIP=\<IP\>&capture-userpass=\<user\>:\<password\>sdk_format=Y800&&resolution=176x144&fps=1");
    frame  = capture_get_frame(stream);
 
    data      = capture_frame_data(frame);
@@ -229,7 +229,7 @@
   * \subsection ex5 Example using capturehost with an existing mjpeg file
   * This is an example of how to use the capturehost interface with an existing mjpeg file.
   *
-  * First, acquire an mjpeg file from a camera. 	 
+  * First, acquire an mjpeg file from a camera.
   \code
    % curl -s -S -u \<user\>:\<password\> "http://\<IP\>/mjpg/video.mjpg?duration=5&resolution=176x144&fps=5" >myfile.mjpeg
    % # Replace \<user\> with an existing user, and \<password\> with the password of the user:
@@ -300,7 +300,7 @@ typedef unsigned long long capture_time;
 
 
 
-/** 
+/**
  * @brief Opens a new stream of the specified media type with the specified
  * properties.
  *
@@ -311,8 +311,8 @@ typedef unsigned long long capture_time;
  *
  * @param media_type The specified media type of the stream.
  *
- * @param media_props The properties of the media type, represented as VAPIX 
- * option string. 
+ * @param media_props The properties of the media type, represented as VAPIX
+ * option string.
  *
  * @return A structure associated with the stream.
  */
@@ -320,15 +320,15 @@ media_stream *
 capture_open_stream(const char *media_type, const char *media_props);
 
 /**
- * @brief Read a media_frame from an open stream. 
+ * @brief Read a media_frame from an open stream.
  *
- * The function will get a frame of data from the stream and return it. 
- * The frame contains the data, the size and the timestamp. 
+ * The function will get a frame of data from the stream and return it.
+ * The frame contains the data, the size and the timestamp.
  * The frame needs to be freed after use, using capture_frame_free.
  *
  * @param stream The structure associated with the stream.
- * 
- * 
+ *
+ *
  * @return A pointer to the data frame.
  */
 media_frame *
@@ -422,10 +422,10 @@ capture_frame_stride(const media_frame *frame);
  * @brief Free the media_frame retrieved from capture_get_frame().
  *
  * @param frame pointer to the media_frame received from capture_get_frame()
- * 
+ *
  * @return void
  */
-void 
+void
 capture_frame_free(media_frame *frame);
 
 /**
@@ -440,11 +440,11 @@ capture_frame_free(media_frame *frame);
 void
 capture_burst_free (media_frame **frames);
 
-/** 
+/**
  * @brief Close a running stream.
  *
  * The function closes the specified stream.
- * 
+ *
  * @param stream The structure associated with the stream.
  */
 void
