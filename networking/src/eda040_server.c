@@ -201,7 +201,7 @@ void * receive_work_function (void * input_data)
 
         // Information about data.
         for (uint32_t i = 0; i < data_size-1; i++) {
-            printf("%s received data [%" PRIu32 "] = %" PRIu32 ".\n",
+            printf("%s Received data [%" PRIu32 "] = %" PRIu32 ".\n",
                    output_tag,
                    i,
                    converted_data[i]);
@@ -270,13 +270,13 @@ void * send_work_function (void * input_data)
         // Add rest of data to send_data.
         for (uint32_t i = 0; i < data_size; i++) {
             send_data[i+1] = htonl(data_to_be_sent[i]);
-            printf("%s packing data: %" PRIu32 " as :%" PRIu32 ".\n",
+            printf("%s Packing data: %" PRIu32 " as :%" PRIu32 ".\n",
                    output_tag,
                    data_to_be_sent[i],
                    send_data[i+1]);
         }
         // Send data.
-        printf("%s sending data of data_size: %" PRIu32 ".\n",
+        printf("%s Sending data of data_size: %" PRIu32 ".\n",
                output_tag,
                data_size+1);
         int status = send(new_socket_descriptor, send_data, (data_size+1)*sizeof(uint32_t), 0);
