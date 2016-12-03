@@ -145,7 +145,7 @@ void * receive_work_function (void * input_data)
 
     struct sockaddr_storage their_address = {0};
 
-    const char * function_tag = "[RECEIVE]:";
+    const char * output_tag = "[RECEIVE]:";
 
     // Get the values from shared data.
     pthread_mutex_lock(thread_data->data_mutex);
@@ -161,7 +161,7 @@ void * receive_work_function (void * input_data)
     for(;;) { // Main accept() loop.
 
         // Accept and get a new connection.
-        printf("%s waiting for data on port: %s.\n", function_tag, OUR_PORT);
+        printf("%s waiting for data on port: %s.\n", output_tag, OUR_PORT);
 
         // This is a blocking call.
         socklen_t sin_size = sizeof(their_address);
@@ -179,7 +179,7 @@ void * receive_work_function (void * input_data)
                   get_in_address((struct sockaddr *)&their_address),
                   client_address_buffer,
                   sizeof(client_address_buffer));
-        printf("%s got data from %s\n", function_tag, client_address_buffer);
+        printf("%s got data from %s\n", output_tag, client_address_buffer);
 
         uint32_t data_buffer[MAX_DATA_SIZE];
 
@@ -205,7 +205,7 @@ void * receive_work_function (void * input_data)
         // Information about data.
         for (uint32_t i = 0; i < data_size-1; i++) {
             printf("%s received data [%" PRIu32 "] = %" PRIu32 ".\n",
-                   function_tag,
+                   output_tag,
                    i,
                    converted_data[i]);
         }
@@ -236,7 +236,7 @@ void * receive_work_function (void * input_data)
         // Unlock the mutex.
         pthread_mutex_unlock(thread_data->data_mutex);
 
-        printf("%s Put data in receive queue.\n", function_tag);
+        printf("%s Put data in receive queue.\n", output_tag);
     }
 }
 
@@ -245,7 +245,7 @@ void * send_work_function (void * input_data)
     // Unpack input_data.
     struct socket_data * data = (struct socket_data * )input_data;
 
-    const char * function_tag = "[SEND]:";
+    const char * output_tag = "[SEND]:";
 
     // lock data mutex.
     pthread_mutex_lock(data->data_mutex);
@@ -253,12 +253,12 @@ void * send_work_function (void * input_data)
     for(;;) { // waiting for data loop.
 
         if (send_list == NULL) { // Sleep, nothing to send.
-            printf("%s Wait for data.\n", function_tag);
+            printf("%s Wait for data.\n", output_tag);
             pthread_cond_wait(data->data_to_send_sig, data->data_mutex);
         }
 
         // Has lock here if awoken.
-        printf("%s There is data!\n", function_tag);
+        printf("%s There is data!\n", output_tag);
 
         // Use socket descriptor from receive thread.
         int new_socket_descriptor = *data->new_socket_descriptor;
@@ -274,13 +274,13 @@ void * send_work_function (void * input_data)
         for (uint32_t i = 0; i < data_size; i++) {
             send_data[i+1] = htonl(data_to_be_sent[i]);
             printf("%s packing data: %" PRIu32 " as :%" PRIu32 ".\n",
-                   function_tag,
+                   output_tag,
                    data_to_be_sent[i],
                    send_data[i+1]);
         }
         // Send data.
         printf("%s sending data of data_size: %" PRIu32 ".\n",
-               function_tag,
+               output_tag,
                data_size+1);
         int status = send(new_socket_descriptor, send_data, (data_size+1)*sizeof(uint32_t), 0);
         if (status == -1) {
@@ -299,7 +299,7 @@ void * send_work_function (void * input_data)
         free(current);
 
         // Loop until the list is done.
-        printf("%s data sent.\n", function_tag);
+        printf("%s data sent.\n", output_tag);
     }
 }
 
@@ -311,7 +311,7 @@ int main(void)
     struct socket_data data = {0};
     struct sockaddr_storage their_address;
 
-    const char * function_tag = "[MAIN]:";
+    const char * output_tag = "[MAIN]:";
 
     // Create data lock.
     pthread_mutex_t data_mutex = PTHREAD_MUTEX_INITIALIZER;
@@ -331,12 +331,12 @@ int main(void)
     open_socket(OUR_PORT, &data);
 
     // Create and run receive thread, populates data necessary for send thread.
-    printf("%s Created thread for receiving data.\n", function_tag);
+    printf("%s Created thread for receiving data.\n", output_tag);
     pthread_t receive = {0};
     pthread_create(&receive, NULL, receive_work_function, &data);
 
     // Create and run send thread.
-    printf("%s Created thread for sending data.\n", function_tag);
+    printf("%s Created thread for sending data.\n", output_tag);
     pthread_t send = {0};
     pthread_create(&send, NULL, send_work_function, &data);
 
@@ -366,7 +366,7 @@ int main(void)
         // Signal the send thread.
         pthread_cond_signal(&data_to_send_sig);
 
-        printf("%s Moved data from receive to send queue.\n", function_tag);
+        printf("%s Moved data from receive to send queue.\n", output_tag);
     }
 
     // Join threads.
