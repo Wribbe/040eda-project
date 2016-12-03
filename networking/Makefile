@@ -1,4 +1,4 @@
-dir_source := src
+dir_source := src/executables
 dir_objects = objects
 dir_emb_objects := $(dir_objects)/embedded
 dir_executables = executables
