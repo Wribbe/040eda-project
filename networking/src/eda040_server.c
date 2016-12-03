@@ -130,9 +130,6 @@ void open_socket(const char * PORT, struct socket_data * socket_data) {
 
 }
 
-int fake_lock = 1;
-
-
 void * receive_work_function (void * input_data)
 {
     // Unpack input_data.
