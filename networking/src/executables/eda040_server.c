@@ -79,6 +79,7 @@ struct data_node * receive_list = NULL;
 struct data_node * receive_last = NULL;
 struct data_node * send_list = NULL;
 struct data_node * send_last = NULL;
+struct data_node * picture_node = NULL;
 
 void open_socket(const char * PORT, struct socket_data * socket_data) {
 
@@ -341,65 +342,60 @@ void * capture_work_function (void * input_data)
 
         // ### Capturing pictures.
 
-        // Try to save data to disk.
-
         // Always create local storage for data.
-//        struct data_node local_picture = my_malloc(sizeof(struct data_node));
+        struct data_node * local_picture = my_malloc(sizeof(struct data_node));
 
         // Get frame and size.
         image_frame = capture_get_frame(stream);
         image_size = capture_frame_size(image_frame);
-        image_data = capture_frame_data(image_frame);
-        // Get data.
-//        image_data = my_malloc(sizeof(image_size));
-        // Open file.
-        FILE * output_file = fopen("my_image.jpeg", "wb");
-        fwrite(image_data, image_size, 1, output_file);
-        fflush(output_file);
 
-        fclose(output_file);
+        // Allocate memory on the heap for image data.
+        image_data = my_malloc(sizeof(image_size));
+        // Copy image data from frame to heap.
+        memcpy(image_data, capture_frame_data(image_frame), image_size);
 
-        // Free resources.
+        // Free frame resources.
         capture_frame_free(image_frame);
 
-       // // Create image frame and extract variables.
-       // image_frame = capture_get_frame(stream);
-       // image_size = capture_frame_size(image_frame);
+        // Populate local picture node.
+        local_picture->data = image_data;
+        local_picture->size = image_size;
+        local_picture->next = NULL;
 
-       // // Create data node for picture.
-       // struct data_node * node = my_malloc(sizeof(struct data_node));
-       // // Create space on heap for image data.
-       // image_data = my_malloc(sizeof(image_size));
-       // // Copy picture data from frame to image_data.
-       // memcpy(image_data, capture_frame_data(image_frame), image_size);
-       // // Populate data node.
-       // node->size = image_size;
-       // node->data = image_data;
-       // node->next = NULL;
+        // ### Manipulate send list.
 
-       // // Free resources.
-       // capture_frame_free(image_frame);
+        // Get and lock data mutex.
+        pthread_mutex_lock(data->data_mutex);
 
-       // // Get data mutex.
-       // pthread_mutex_lock(data->data_mutex);
+        // Is there a existing picture node?
+        if (picture_node != NULL) { // Use that struct.
+            // Free old picture data.
+            free(picture_node->data);
+            // Replace current data and size.
+            picture_node->data = local_picture->data;
+            picture_node->size = local_picture->size;
+            // Get rid of unused local picture struct.
+            free(local_picture);
+        } else { // Use created struct.
+            picture_node = local_picture;
+            // Prepend node to the list.
+            if (send_list == NULL) { // Only element in list.
+                send_list = picture_node;
+                send_last = send_list;
+            } else { // More than one element, prepend.
+                struct data_node * old_first = send_list;
+                send_list = picture_node;
+                send_list->next = old_first;
+            }
+        }
 
-       // // Append to send queue.
-       // if (send_last == NULL) { // No elements in send list.
-       //     send_list = node;
-       //     send_last = node;
-       // } else { // Elements in send list.
-       //     // Append to list.
-       //     send_last->next = node;
-       //     // Advance last pointer.
-       //     send_last = send_last->next;
-       // }
+        // Signal send thread.
+        pthread_cond_signal(data->data_to_send_sig);
 
-       // // Signal send thread.
-       // pthread_cond_signal(data->data_to_send_sig);
+        // Release data mutex.
+        pthread_mutex_unlock(data->data_mutex);
 
-       // // Release data mutex.
-       // pthread_mutex_unlock(data->data_mutex);
-
+        // Sleep until next picture should be taken.
         nanosleep(&PICTURE_INTERVAL, NULL);
     }
 }

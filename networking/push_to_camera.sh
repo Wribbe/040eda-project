@@ -4,6 +4,8 @@ cam_num="2"
 
 if [ ! $# -eq 0 ]; then
     cam_num="$1"
+else
+    read -p "Which camera to push to?: " cam_num
 fi
 
 exec_dir=executables
