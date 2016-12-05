@@ -41,6 +41,15 @@ void * get_in_address(struct sockaddr * sa) {
     return &(((struct sockaddr_in6 * )sa)->sin6_addr);
 }
 
+void * my_malloc(size_t size) {
+    void * data = malloc(size);
+    if (data == NULL) {
+        fprintf(stderr, "Could not allocate data, aborting.\n");
+        exit(1);
+    }
+    return data;
+}
+
 struct socket_data {
     int * socket_descriptor;
     int * new_socket_descriptor;
@@ -204,7 +213,7 @@ void * receive_work_function (void * input_data)
         uint32_t * data_pointer = (uint32_t * )data_buffer;
         uint32_t data_size = ntohl(*data_pointer);
 
-        uint32_t * converted_data = malloc(sizeof(uint32_t)*data_size);
+        uint32_t * converted_data = my_malloc(sizeof(uint32_t)*data_size);
         // Convert received data.
         for (uint32_t i = 0; i < data_size; i++) {
             converted_data[i] = ntohl(data_pointer[1+i]);
@@ -219,7 +228,7 @@ void * receive_work_function (void * input_data)
         }
 
         // Create new node for the receive list.
-        struct data_node * node = malloc(sizeof(struct data_node));
+        struct data_node * node = my_malloc(sizeof(struct data_node));
 
         // Populate the node.
         node->size = data_size;
@@ -330,43 +339,66 @@ void * capture_work_function (void * input_data)
 
     for (;;) { // Action loop.
 
-        // Create image frame and extract variables.
+        // ### Capturing pictures.
+
+        // Try to save data to disk.
+
+        // Always create local storage for data.
+//        struct data_node local_picture = my_malloc(sizeof(struct data_node));
+
+        // Get frame and size.
         image_frame = capture_get_frame(stream);
         image_size = capture_frame_size(image_frame);
+        image_data = capture_frame_data(image_frame);
+        // Get data.
+//        image_data = my_malloc(sizeof(image_size));
+        // Open file.
+        FILE * output_file = fopen("my_image.jpeg", "wb");
+        fwrite(image_data, image_size, 1, output_file);
+        fflush(output_file);
 
-        // Create data node for picture.
-        struct data_node * node = malloc(sizeof(struct data_node));
-        // Create space on heap for image data.
-        image_data = malloc(sizeof(image_size));
-        // Copy picture data from frame to image_data.
-        memcpy(image_data, capture_frame_data(image_frame), image_size);
-        // Populate data node.
-        node->size = image_size;
-        node->data = image_data;
-        node->next = NULL;
+        fclose(output_file);
 
         // Free resources.
         capture_frame_free(image_frame);
 
-        // Get data mutex.
-        pthread_mutex_lock(data->data_mutex);
+       // // Create image frame and extract variables.
+       // image_frame = capture_get_frame(stream);
+       // image_size = capture_frame_size(image_frame);
 
-        // Append to send queue.
-        if (send_last == NULL) { // No elements in send list.
-            send_list = node;
-            send_last = node;
-        } else { // Elements in send list.
-            // Append to list.
-            send_last->next = node;
-            // Advance last pointer.
-            send_last = send_last->next;
-        }
+       // // Create data node for picture.
+       // struct data_node * node = my_malloc(sizeof(struct data_node));
+       // // Create space on heap for image data.
+       // image_data = my_malloc(sizeof(image_size));
+       // // Copy picture data from frame to image_data.
+       // memcpy(image_data, capture_frame_data(image_frame), image_size);
+       // // Populate data node.
+       // node->size = image_size;
+       // node->data = image_data;
+       // node->next = NULL;
 
-        // Signal send thread.
-        pthread_cond_signal(data->data_to_send_sig);
+       // // Free resources.
+       // capture_frame_free(image_frame);
 
-        // Release data mutex.
-        pthread_mutex_unlock(data->data_mutex);
+       // // Get data mutex.
+       // pthread_mutex_lock(data->data_mutex);
+
+       // // Append to send queue.
+       // if (send_last == NULL) { // No elements in send list.
+       //     send_list = node;
+       //     send_last = node;
+       // } else { // Elements in send list.
+       //     // Append to list.
+       //     send_last->next = node;
+       //     // Advance last pointer.
+       //     send_last = send_last->next;
+       // }
+
+       // // Signal send thread.
+       // pthread_cond_signal(data->data_to_send_sig);
+
+       // // Release data mutex.
+       // pthread_mutex_unlock(data->data_mutex);
 
         nanosleep(&PICTURE_INTERVAL, NULL);
     }

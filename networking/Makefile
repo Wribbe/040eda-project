@@ -47,7 +47,7 @@ emb: embed
 both: all embed
 
 push: embed
-	./push_to_camera.sh
+	./push_to_camera.sh $(cam)
 
 serv: both
 	./$(dir_executables)/eda040_server
