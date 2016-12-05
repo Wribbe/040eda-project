@@ -169,7 +169,7 @@ void * receive_work_function (void * input_data)
     for(;;) { // Main accept() loop.
 
         // Accept and get a new connection.
-        printf("%s waiting for data on port: %s.\n", output_tag, OUR_PORT);
+        printf("%s Waiting for data on port: %s.\n", output_tag, OUR_PORT);
 
         // This is a blocking call.
         socklen_t sin_size = sizeof(their_address);
@@ -187,7 +187,7 @@ void * receive_work_function (void * input_data)
                   get_in_address((struct sockaddr *)&their_address),
                   client_address_buffer,
                   sizeof(client_address_buffer));
-        printf("%s got data from %s\n", output_tag, client_address_buffer);
+        printf("%s Got data from %s\n", output_tag, client_address_buffer);
 
         uint32_t data_buffer[MAX_DATA_SIZE];
 
