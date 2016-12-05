@@ -260,13 +260,18 @@ void * send_work_function (void * input_data)
 
     for(;;) { // waiting for data loop.
 
-        if (send_list == NULL) { // Sleep, nothing to send.
-            printf("%s Wait for data.\n", output_tag);
+        // Sleep if there is nothing to send or there is no connected client.
+        while (send_list == NULL || data->new_socket_descriptor == NULL) {
+            if (send_list == NULL) {
+                printf("%s Wait for data.\n", output_tag);
+            } else {
+                printf("%s Have data, but no connected client.\n", output_tag);
+            }
             pthread_cond_wait(data->data_to_send_sig, data->data_mutex);
         }
 
         // Has lock here if awoken.
-        printf("%s There is data!\n", output_tag);
+        printf("%s There is data and a connected client!\n", output_tag);
 
         // Use socket descriptor from receive thread.
         int new_socket_descriptor = *data->new_socket_descriptor;
@@ -315,8 +320,54 @@ void * capture_work_function (void * input_data)
 {
     // Unpack input data.
     struct socket_data * data = (struct socket_data * )input_data;
+    const char * options = "fps=25&sdk=format=Y800&resolution=160x120";
+
+    // Set up image stream on camera.
+    media_stream * stream = capture_open_stream(IMAGE_JPEG, options);
+    media_frame * image_frame;
+    size_t image_size = 0;
+    void * image_data = NULL;
 
     for (;;) { // Action loop.
+
+        // Create image frame and extract variables.
+        image_frame = capture_get_frame(stream);
+        image_size = capture_frame_size(image_frame);
+
+        // Create data node for picture.
+        struct data_node * node = malloc(sizeof(struct data_node));
+        // Create space on heap for image data.
+        image_data = malloc(sizeof(image_size));
+        // Copy picture data from frame to image_data.
+        memcpy(image_data, capture_frame_data(image_frame), image_size);
+        // Populate data node.
+        node->size = image_size;
+        node->data = image_data;
+        node->next = NULL;
+
+        // Free resources.
+        capture_frame_free(image_frame);
+
+        // Get data mutex.
+        pthread_mutex_lock(data->data_mutex);
+
+        // Append to send queue.
+        if (send_last == NULL) { // No elements in send list.
+            send_list = node;
+            send_last = node;
+        } else { // Elements in send list.
+            // Append to list.
+            send_last->next = node;
+            // Advance last pointer.
+            send_last = send_last->next;
+        }
+
+        // Signal send thread.
+        pthread_cond_signal(data->data_to_send_sig);
+
+        // Release data mutex.
+        pthread_mutex_unlock(data->data_mutex);
+
         nanosleep(&PICTURE_INTERVAL, NULL);
     }
 }
@@ -392,18 +443,6 @@ int main(void)
 
         // Signal the send thread.
         pthread_cond_signal(&data_to_send_sig);
-
-        // Create image frame and extract variables.
-        image_frame = capture_get_frame(stream);
-        image_size = capture_frame_size(image_frame);
-        image_data = capture_frame_data(image_frame);
-
-        // Save data to disk.
-        FILE * image_file = fopen("image.jpeg", "wb");
-        fwrite(image_data, image_size, 1, image_file);
-
-        // Free resources.
-        capture_frame_free(image_frame);
 
         printf("%s Moved data from receive to send queue.\n", output_tag);
     }
