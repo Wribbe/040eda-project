@@ -208,8 +208,9 @@ void * receive_work_function (void * input_data)
         printf("%s Got data from %s\n", output_tag, client_address_buffer);
 
         if (numbytes == -1) {
-            perror("recv");
-            exit(1);
+            printf("%s Error on recv, client closed connection?\n", output_tag);
+            thread_data->new_socket_descriptor = NULL;
+            continue;
         }
 
         if (numbytes == 0) {
@@ -318,7 +319,10 @@ void * send_work_function (void * input_data)
                total_data_ammount);
         int status = send(new_socket_descriptor, send_data, total_data_ammount, 0);
         if (status == -1) {
-            perror("send");
+            printf("%s User closed connection.\n", output_tag);
+            // Set new_socket_descriptor to NULL.
+            data->new_socket_descriptor = NULL;
+            continue;
         }
 
         // Free temporary data storage.
