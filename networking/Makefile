@@ -26,8 +26,8 @@ executables = $(foreach filename,$(sources:.c=),$(dir_executables)/$(filename))
 emb_executables = $(foreach filename,$(sources:.c=),$(dir_emb_executables)/$(filename))
 
 libdir_flags := $(foreach lib_folder,$(dir_libfolders),-L$(lib_folder))
-libraries := -lpthread -pthread -lcapture -ljpeg
-embed_libraries := -lpthread -pthread -lrapp -lcapture
+libraries := -lpthread -pthread -lcapture -ljpeg -lm
+embed_libraries := -lpthread -pthread -lrapp -lcapture -lm
 embed_include := -I$(emb_comp_base_dir)/mipsisa32r2el-axis-linux-gnu/sys-include
 linker_flags := -Wl,-rpath=./lib
 
