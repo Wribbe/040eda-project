@@ -122,35 +122,35 @@ int main(int argc, char * argv[]) {
     freeaddrinfo(serverinfo); // All done with this struct.
     // Connection complete.
 
-    // Send 101110.
-    uint32_t converted_number = string_to_bits("101");
-    printf("Sending: %" PRIu32 "\n", converted_number);
-    uint32_t send_data[] = {
-        0xff, // Reserved for the size.
-        htonl(converted_number),
-    };
+ //   // Send 101110.
+ //   uint32_t converted_number = string_to_bits("101");
+ //   printf("Sending: %" PRIu32 "\n", converted_number);
+ //   uint32_t send_data[] = {
+ //       0xff, // Reserved for the size.
+ //       htonl(converted_number),
+ //   };
 
-    // Set data size as first parameter.
-    send_data[0] = htonl(SIZE(send_data)-1);
+ //   // Set data size as first parameter.
+ //   send_data[0] = htonl(SIZE(send_data)-1);
 
-    printf("size of send_data: %zu\n", sizeof(send_data));
+ //   printf("size of send_data: %zu\n", sizeof(send_data));
 
-    // Send data package.
-    int send_status = send(socket_descriptor,
-                           &send_data,
-                           sizeof(send_data),
-                           0);
+ //   // Send data package.
+ //   int send_status = send(socket_descriptor,
+ //                          &send_data,
+ //                          sizeof(send_data),
+ //                          0);
 
-    // Check status of send.
-    if (send_status == -1) {
-        perror("send");
-    }
+ //   // Check status of send.
+ //   if (send_status == -1) {
+ //       perror("send");
+ //   }
 
-    // Receive data.
+ //   // Receive data.
     printf("Waiting for data.\n");
     numbytes = recv(socket_descriptor,
                     data_buffer,
-                    MAX_DATA_SIZE-1,
+                    sizeof(uint32_t)*2,
                     0);
 
     if (numbytes == -1) {
@@ -161,12 +161,41 @@ int main(int argc, char * argv[]) {
     printf("Got data, num_bytes = %d.\n", numbytes);
 
     uint32_t * message = (uint32_t * )data_buffer;
-    uint32_t array_size = ntohl(*message);
-    printf("Size of array: %" PRIu32 "\n", array_size);
-    printf("Size of array unconverted: %" PRIu32 "\n", *message);
-    for( uint32_t i = 0; i<array_size; i++) {
-        printf("number @ [%" PRIu32 "] = %" PRIu32 ".\n", i, ntohl(message[i+1]));
+    uint32_t message_size = ntohl(*message);
+    uint32_t original_data_size = ntohl(*(message+1));
+
+    uint32_t * re_converted_data = malloc(message_size);
+
+    printf("Size of message: %" PRIu32 "\n", message_size);
+    printf("Size of original data: %" PRIu32 "\n", original_data_size);
+
+    unsigned char * byte_pointer = (unsigned char * )re_converted_data;
+    while ((uint32_t)numbytes < message_size && numbytes != -1) {
+        int current_bytes = recv(socket_descriptor,
+                                 byte_pointer,
+                                 message_size,
+                                 0);
+        if (current_bytes == -1) {
+            fprintf(stderr, "Error, on receiving picture.\n");
+            exit(1);
+        }
+        byte_pointer += current_bytes;
+        numbytes += current_bytes;
     }
+    printf("Received a total of %d bytes.", numbytes);
+
+    // Convert and print the data to file.
+    for (uint32_t i=0; i<message_size/sizeof(uint32_t); i++) {
+        uint32_t raw_data = re_converted_data[i];
+        uint32_t converted_data = ntohl(raw_data);
+        re_converted_data[i] = converted_data;
+    }
+
+    FILE * output_file = fopen("captured_image.jpeg", "wb");
+    fwrite(re_converted_data, original_data_size, 1, output_file);
+    fclose(output_file);
+
+    free(re_converted_data);
 
     close(socket_descriptor);
 

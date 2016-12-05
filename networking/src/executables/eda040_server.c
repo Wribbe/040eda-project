@@ -289,26 +289,41 @@ void * send_work_function (void * input_data)
         struct data_node * current = send_list;
 
         uint32_t data_size = current->size;
-        uint32_t send_data[data_size+1]; // Leave room for length in front.
+        // Calculate how many uint32_t we need to store the data.
+        // Add extra data for:
+        //  - Size of uint32_t elements.
+        //  - The actual bytesize of the data.
+        //  - Extra element in case of the division not being even.
+        size_t num_uints = (data_size/sizeof(uint32_t))+3;
+        size_t total_data_ammount = sizeof(uint32_t)*num_uints;
+        uint32_t * send_data = malloc(total_data_ammount);
 
-        uint32_t * data_to_be_sent = current->data;
-        send_data[0] = htonl(data_size);
-        // Add rest of data to send_data.
-        for (uint32_t i = 0; i < data_size; i++) {
-            send_data[i+1] = htonl(data_to_be_sent[i]);
-            printf("%s Packing data: %" PRIu32 " as :%" PRIu32 ".\n",
-                   output_tag,
-                   data_to_be_sent[i],
-                   send_data[i+1]);
+        // Convert all the data to net long.
+        send_data[0] = htonl(total_data_ammount); // Store data stream size in first element.
+        send_data[1] = htonl(data_size); // Store actual size in first element.
+        uint32_t * data_pointer = (uint32_t * )current->data;
+        for (uint32_t i=2; i<num_uints; i++) {
+            send_data[i] = htonl(data_pointer[i-2]);
         }
+
         // Send data.
-        printf("%s Sending data of data_size: %" PRIu32 ".\n",
+        printf("%s Sending data of data_size: %zu.\n",
                output_tag,
-               data_size+1);
-        int status = send(new_socket_descriptor, send_data, (data_size+1)*sizeof(uint32_t), 0);
+               total_data_ammount);
+        int status = send(new_socket_descriptor, send_data, total_data_ammount, 0);
         if (status == -1) {
             perror("send");
         }
+
+        // Free the current element.
+        free(current->data);
+        free(current);
+
+        // Free temporary data storage.
+        free(send_data);
+
+        // Loop until the list is done.
+        printf("%s data sent.\n", output_tag);
 
         // Advance the list pointer.
         send_list = current->next;
@@ -316,13 +331,6 @@ void * send_work_function (void * input_data)
         if (send_list == NULL) { // Make sure that last does not point to free'd data.
             send_last = NULL;
         }
-
-        // Free the current element.
-        free(current->data);
-        free(current);
-
-        // Loop until the list is done.
-        printf("%s data sent.\n", output_tag);
     }
 }
 
@@ -394,7 +402,6 @@ void * capture_work_function (void * input_data)
 
         // Release data mutex.
         pthread_mutex_unlock(data->data_mutex);
-
 
         // Sleep until next picture should be taken.
         nanosleep(&PICTURE_INTERVAL, NULL);
