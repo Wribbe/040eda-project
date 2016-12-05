@@ -60,8 +60,14 @@ struct socket_data {
     pthread_mutex_t * data_mutex;
 };
 
+enum PACKET_TYPE {
+    COMMAND,
+    PICTURE,
+};
+
 struct data_node
 {
+    enum PACKET_TYPE type;
     uint32_t size;
     uint32_t * data;
     struct data_node * next;
@@ -298,19 +304,17 @@ void * send_work_function (void * input_data)
         uint32_t data_size = current->size;
         // Calculate how many uint32_t we need to store the data.
         // Add extra data for:
-        //  - Size of uint32_t elements.
-        //  - The actual bytesize of the data.
         //  - Extra element in case of the division not being even.
-        size_t num_uints = (data_size/sizeof(uint32_t))+3;
+        size_t num_uints = (data_size/sizeof(uint32_t))+1;
         size_t total_data_ammount = sizeof(uint32_t)*num_uints;
-        uint32_t * send_data = malloc(total_data_ammount);
+        uint32_t * send_data = my_malloc(total_data_ammount);
 
         // Convert all the data to net long.
-        send_data[0] = htonl(total_data_ammount); // Store data stream size in first element.
-        send_data[1] = htonl(data_size); // Store actual size in first element.
+//        send_data[0] = htonl(total_data_ammount); // Store data stream size in first element.
+//        send_data[1] = htonl(data_size); // Store actual size in first element.
         uint32_t * data_pointer = (uint32_t * )current->data;
-        for (uint32_t i=2; i<num_uints; i++) {
-            send_data[i] = htonl(data_pointer[i-2]);
+        for (uint32_t i=0; i<num_uints; i++) {
+            send_data[i] = htonl(data_pointer[i]);
         }
 
         // Send data.
@@ -359,7 +363,9 @@ void * capture_work_function (void * input_data)
     media_stream * stream = capture_open_stream(IMAGE_JPEG, options);
     media_frame * image_frame;
     size_t image_size = 0;
-    void * image_data = NULL;
+    void * capture_data = NULL;
+    capture_time time_stamp = {0};
+    size_t timestamp_size = sizeof(capture_time);
 
     for (;;) { // Action loop.
 
@@ -368,22 +374,48 @@ void * capture_work_function (void * input_data)
         // Always create local storage for data.
         struct data_node * local_picture = my_malloc(sizeof(struct data_node));
 
-        // Get frame and size.
+        // Get frame, size and time stamp.
         image_frame = capture_get_frame(stream);
         image_size = capture_frame_size(image_frame);
+        time_stamp = capture_frame_timestamp(image_frame);
+
+        // Total size of image data and time stamp.
+        size_t header_flag = 1;
+        size_t size_space = 4;
+        size_t total_data_size = header_flag+size_space+timestamp_size+image_size;
 
         // Allocate memory on the heap for image data.
-        image_data = my_malloc(image_size);
+        capture_data = my_malloc(total_data_size);
+
+        // Set up byte_pointer.
+        unsigned char * byte_pointer = (unsigned char * )capture_data;
+
+        // Set the correct flag for picture.
+        unsigned char ones = 0xff;
+
+        // Copy header flag to data.
+        memcpy(byte_pointer, &ones, header_flag);
+        byte_pointer += header_flag;
+
+        // Copy image size to data.
+        memcpy(byte_pointer, &image_size, size_space);
+        byte_pointer += size_space;
+
+        // Copy time stamp data to data.
+        memcpy(byte_pointer, &time_stamp, timestamp_size);
+        byte_pointer += timestamp_size;
+
         // Copy image data from frame to heap.
-        memcpy(image_data, capture_frame_data(image_frame), image_size);
+        memcpy(byte_pointer, capture_frame_data(image_frame), image_size);
 
         // Free frame resources.
         capture_frame_free(image_frame);
 
         // Populate local picture node.
-        local_picture->data = image_data;
-        local_picture->size = image_size;
+        local_picture->size = total_data_size;
+        local_picture->data = capture_data;
         local_picture->next = NULL;
+        local_picture->type = PICTURE;
 
         // ### Manipulate send list.
 
