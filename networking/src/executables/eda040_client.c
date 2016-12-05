@@ -197,6 +197,8 @@ int main(int argc, char * argv[]) {
 
     free(re_converted_data);
 
+    for (;;) {
+    }
     close(socket_descriptor);
 
     return 0;
