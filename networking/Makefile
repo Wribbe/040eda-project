@@ -34,7 +34,6 @@ linker_flags := -Wl,-rpath=./lib
 my_flags := -Wall -Wextra -pedantic -std=gnu99 -Wwrite-strings -g $(libdir_flags) -I./include
 FLAGS := $(libraries) $(my_flags) $(CFLAGS)
 
-
 # Commands that add/remove files.
 .PHONY: all embed emb both clean
 # Utility commands.
