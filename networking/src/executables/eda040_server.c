@@ -350,7 +350,7 @@ void * capture_work_function (void * input_data)
         image_size = capture_frame_size(image_frame);
 
         // Allocate memory on the heap for image data.
-        image_data = my_malloc(sizeof(image_size));
+        image_data = my_malloc(image_size);
         // Copy image data from frame to heap.
         memcpy(image_data, capture_frame_data(image_frame), image_size);
 
@@ -394,6 +394,7 @@ void * capture_work_function (void * input_data)
 
         // Release data mutex.
         pthread_mutex_unlock(data->data_mutex);
+
 
         // Sleep until next picture should be taken.
         nanosleep(&PICTURE_INTERVAL, NULL);
