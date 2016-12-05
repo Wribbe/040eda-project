@@ -32,7 +32,7 @@ embed_include := -I$(emb_comp_base_dir)/mipsisa32r2el-axis-linux-gnu/sys-include
 linker_flags := -Wl,-rpath=./lib
 
 my_flags := -Wall -Wextra -pedantic -std=gnu99 -Wwrite-strings -g $(libdir_flags) -I./include
-FLAGS := $(libraries) $(my_flags) $(CFLAGS)
+FLAGS := $(my_flags) $(CFLAGS) $(libraries)
 
 # Commands that add/remove files.
 .PHONY: all embed emb both clean
@@ -57,7 +57,7 @@ cli: both
 
 change_to_embedded:
 	$(eval CC = $(emb_bin)/mipsisa32r2el-axis-linux-gnu-gcc)
-	$(eval FLAGS = $(embed_libraries) $(my_flags) $(CFLAGS) $(embed_include))
+	$(eval FLAGS = $(my_flags) $(CFLAGS) $(embed_include) $(embed_libraries))
 
 mkdirs:
 	$(call conditional_mkdir,$(dir_objects))
@@ -74,19 +74,19 @@ clean:
 
 # Regular executables.
 %.o : %.c | mkdirs
-	$(CC) -c $(FLAGS) $< -o $(dir_objects)/$@
+	$(CC) $< -c $(FLAGS) -o $(dir_objects)/$@
 	@echo
 
 $(dir_executables)/% : %.o
-	$(CC) $(linker_flags) $(FLAGS) $(dir_objects)/$< -o $@
+	$(CC) $(dir_objects)/$< $(linker_flags) $(FLAGS) -o $@
 	@echo
 
 # Embedded executables.
 $(dir_emb_objects)/%.o : %.c | mkdirs embed_mkdirs
-	$(CC) -c $(FLAGS) $< -o $@
+	$(CC) $< -c $(FLAGS) -o $@
 	@echo
 
 $(dir_emb_executables)/% : objects/embedded/%.o
-	$(CC) $(FLAGS) $(libdir_flags) $< -o $@
+	$(CC) $< $(FLAGS) $(libdir_flags) -o $@
 	@echo
 
