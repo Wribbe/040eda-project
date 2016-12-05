@@ -20,6 +20,8 @@
 #include <stddef.h>
 #include <sys/sysinfo.h>
 #include <sys/time.h>
+#include <time.h>
+#include <math.h>
 #include "capture.h"
 #include "net_data.h"
 
@@ -30,7 +32,7 @@
 
 #define SIZE(x) sizeof(x)/sizeof(x[0])
 
-size_t PICTURE_INTERVAL = 1000;
+struct timespec PICTURE_INTERVAL = {0};
 
 void * get_in_address(struct sockaddr * sa) {
     if (sa->sa_family == AF_INET) {
@@ -38,7 +40,6 @@ void * get_in_address(struct sockaddr * sa) {
     }
     return &(((struct sockaddr_in6 * )sa)->sin6_addr);
 }
-
 
 struct socket_data {
     int * socket_descriptor;
@@ -56,6 +57,14 @@ struct data_node
     uint32_t * data;
     struct data_node * next;
 };
+
+void set_capture_interval(float seconds) {
+    printf("[INFO]: Setting capture interval to %.2fs.\n", seconds);
+    // Divide with 1 to get the full number of seconds.
+    PICTURE_INTERVAL.tv_sec = seconds/1;
+    // Take the remainder and multiply by 10^9 to convert it to nanoseconds.
+    PICTURE_INTERVAL.tv_nsec = fmodf(seconds, 1.0)*pow(10, 9);
+}
 
 struct data_node * receive_list = NULL;
 struct data_node * receive_last = NULL;
@@ -307,13 +316,9 @@ void * capture_work_function (void * input_data)
     // Unpack input data.
     struct socket_data * data = (struct socket_data * )input_data;
 
-    const char * output_tag = "[CAPTURE]:";
-
     for (;;) { // Action loop.
-        printf("%s Taking picture.\n", output_tag);
-        sleep(PICTURE_INTERVAL);
+        nanosleep(&PICTURE_INTERVAL, NULL);
     }
-
 }
 
 int main(void)
@@ -352,6 +357,10 @@ int main(void)
     printf("%s Created thread for sending data.\n", output_tag);
     pthread_t send = {0};
     pthread_create(&send, NULL, send_work_function, &data);
+
+    // Set capture interval to default capture.
+    float default_capture = 0.5f;
+    set_capture_interval(default_capture);
 
     // Create and run capture thread.
     printf("%s Created thread for capturing pictures.\n", output_tag);
@@ -401,7 +410,6 @@ int main(void)
 
         // Free resources.
         capture_frame_free(image_frame);
-
 
         printf("%s Moved data from receive to send queue.\n", output_tag);
     }
