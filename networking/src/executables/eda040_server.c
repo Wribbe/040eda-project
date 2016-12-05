@@ -197,7 +197,6 @@ void * receive_work_function (void * input_data)
                   get_in_address((struct sockaddr *)&their_address),
                   client_address_buffer,
                   sizeof(client_address_buffer));
-        printf("%s Got data from %s\n", output_tag, client_address_buffer);
 
         uint32_t data_buffer[MAX_DATA_SIZE];
 
@@ -206,9 +205,16 @@ void * receive_work_function (void * input_data)
                         MAX_DATA_SIZE,
                         0);
 
+        printf("%s Got data from %s\n", output_tag, client_address_buffer);
+
         if (numbytes == -1) {
             perror("recv");
             exit(1);
+        }
+
+        if (numbytes == 0) {
+            printf("\n###### CONTINUING!!\n\n");
+            continue;
         }
 
         uint32_t * data_pointer = (uint32_t * )data_buffer;
@@ -221,12 +227,12 @@ void * receive_work_function (void * input_data)
         }
 
         // Information about data.
-        for (uint32_t i = 0; i < data_size-1; i++) {
-            printf("%s Received data [%" PRIu32 "] = %" PRIu32 ".\n",
-                   output_tag,
-                   i,
-                   converted_data[i]);
-        }
+//        for (uint32_t i = 0; i < data_size-1; i++) {
+//            printf("%s Received data [%" PRIu32 "] = %" PRIu32 ".\n",
+//                   output_tag,
+//                   i,
+//                   converted_data[i]);
+//        }
 
         // Create new node for the receive list.
         struct data_node * node = my_malloc(sizeof(struct data_node));
@@ -315,15 +321,10 @@ void * send_work_function (void * input_data)
             perror("send");
         }
 
-        // Free the current element.
-        free(current->data);
-        free(current);
-
         // Free temporary data storage.
         free(send_data);
 
-        // Loop until the list is done.
-        printf("%s data sent.\n", output_tag);
+        printf("%s Data sent.\n", output_tag);
 
         // Advance the list pointer.
         send_list = current->next;
@@ -331,6 +332,16 @@ void * send_work_function (void * input_data)
         if (send_list == NULL) { // Make sure that last does not point to free'd data.
             send_last = NULL;
         }
+
+        // Free the processed element.
+        free(current->data);
+        free(current);
+
+        // Set picture_node to null if it was current.
+        if (current == picture_node) {
+            picture_node = NULL;
+        }
+        current = NULL;
     }
 }
 
@@ -396,6 +407,8 @@ void * capture_work_function (void * input_data)
                 send_list->next = old_first;
             }
         }
+
+        printf("[Capture]: Capturing picture.\n");
 
         // Signal send thread.
         pthread_cond_signal(data->data_to_send_sig);
