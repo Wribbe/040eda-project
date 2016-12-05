@@ -370,14 +370,8 @@ int main(void)
     // Take data mutex.
     pthread_mutex_lock(&data_mutex);
 
-    // Set up image stream on camera.
-    media_stream * stream = capture_open_stream(IMAGE_JPEG, "fps=25&sdk=format=Y800&resolution=160x120");
-    media_frame * image_frame;
-    size_t image_size = 0;
-    void * image_data = NULL;
-
     for(;;) { // Main loop data-processing loop.
-        if (receive_list == NULL) { // Nothing to process.
+        while (receive_list == NULL) { // Nothing to process.
             pthread_cond_wait(&data_was_received_sig, &data_mutex);
         }
 
