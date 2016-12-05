@@ -30,6 +30,8 @@
 
 #define SIZE(x) sizeof(x)/sizeof(x[0])
 
+size_t PICTURE_INTERVAL = 1000;
+
 void * get_in_address(struct sockaddr * sa) {
     if (sa->sa_family == AF_INET) {
         return &(((struct sockaddr_in * )sa)->sin_addr);
@@ -300,6 +302,20 @@ void * send_work_function (void * input_data)
     }
 }
 
+void * capture_work_function (void * input_data)
+{
+    // Unpack input data.
+    struct socket_data * data = (struct socket_data * )input_data;
+
+    const char * output_tag = "[CAPTURE]:";
+
+    for (;;) { // Action loop.
+        printf("%s Taking picture.\n", output_tag);
+        sleep(PICTURE_INTERVAL);
+    }
+
+}
+
 int main(void)
 {
     // Create socket;
@@ -336,6 +352,11 @@ int main(void)
     printf("%s Created thread for sending data.\n", output_tag);
     pthread_t send = {0};
     pthread_create(&send, NULL, send_work_function, &data);
+
+    // Create and run capture thread.
+    printf("%s Created thread for capturing pictures.\n", output_tag);
+    pthread_t capture = {0};
+    pthread_create(&capture, NULL, capture_work_function, &data);
 
     // Take data mutex.
     pthread_mutex_lock(&data_mutex);
