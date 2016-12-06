@@ -120,85 +120,104 @@ int main(int argc, char * argv[]) {
     printf("Connecting to: %s\n", address_buffer);
 
     freeaddrinfo(serverinfo); // All done with this struct.
-    // Connection complete.
-
- //   // Send 101110.
- //   uint32_t converted_number = string_to_bits("101");
- //   printf("Sending: %" PRIu32 "\n", converted_number);
- //   uint32_t send_data[] = {
- //       0xff, // Reserved for the size.
- //       htonl(converted_number),
- //   };
-
- //   // Set data size as first parameter.
- //   send_data[0] = htonl(SIZE(send_data)-1);
-
- //   printf("size of send_data: %zu\n", sizeof(send_data));
-
- //   // Send data package.
- //   int send_status = send(socket_descriptor,
- //                          &send_data,
- //                          sizeof(send_data),
- //                          0);
-
- //   // Check status of send.
- //   if (send_status == -1) {
- //       perror("send");
- //   }
-
- //   // Receive data.
-    printf("Waiting for data.\n");
-    numbytes = recv(socket_descriptor,
-                    data_buffer,
-                    sizeof(uint32_t)*2,
-                    0);
-
-    if (numbytes == -1) {
-        perror("recv");
-        exit(1);
-    }
-
-    printf("Got data, num_bytes = %d.\n", numbytes);
-
-    uint32_t * message = (uint32_t * )data_buffer;
-    uint32_t message_size = ntohl(*message);
-    uint32_t original_data_size = ntohl(*(message+1));
-
-    uint32_t * re_converted_data = malloc(message_size);
-
-    printf("Size of message: %" PRIu32 "\n", message_size);
-    printf("Size of original data: %" PRIu32 "\n", original_data_size);
-
-    unsigned char * byte_pointer = (unsigned char * )re_converted_data;
-    while ((uint32_t)numbytes < message_size && numbytes != -1) {
-        int current_bytes = recv(socket_descriptor,
-                                 byte_pointer,
-                                 message_size,
-                                 0);
-        if (current_bytes == -1) {
-            fprintf(stderr, "Error, on receiving picture.\n");
-            exit(1);
-        }
-        byte_pointer += current_bytes;
-        numbytes += current_bytes;
-    }
-    printf("Received a total of %d bytes.", numbytes);
-
-    // Convert and print the data to file.
-    for (uint32_t i=0; i<message_size/sizeof(uint32_t); i++) {
-        uint32_t raw_data = re_converted_data[i];
-        uint32_t converted_data = ntohl(raw_data);
-        re_converted_data[i] = converted_data;
-    }
-
-    FILE * output_file = fopen("captured_image.jpeg", "wb");
-    fwrite(re_converted_data, original_data_size, 1, output_file);
-    fclose(output_file);
-
-    free(re_converted_data);
+//    // Connection complete.
+//
+//   // Send 101110.
+//   uint32_t converted_number = string_to_bits("101");
+//   printf("Sending: %" PRIu32 "\n", converted_number);
+//   uint32_t send_data[] = {
+//       0xff, // Reserved for the size.
+//       htonl(converted_number),
+//   };
+//
+//   // Set data size as first parameter.
+//   send_data[0] = htonl(SIZE(send_data)-1);
+//
+//   printf("size of send_data: %zu\n", sizeof(send_data));
+//
+//   // Send data package.
+//   int send_status = send(socket_descriptor,
+//                          &send_data,
+//                          sizeof(send_data),
+//                          0);
+//
+//   // Check status of send.
+//   if (send_status == -1) {
+//       perror("send");
+//   }
+    uint32_t data_dump[4];
+    int picture = 0;
 
     for (;;) {
+ //   // Receive data.
+        printf("Waiting for data.\n");
+        numbytes = recv(socket_descriptor,
+                        data_dump,
+                        1+8+4,
+                        0);
+
+        if (numbytes == -1) {
+            perror("recv");
+            exit(1);
+        }
+
+        printf("Got data, num_bytes = %d.\n", numbytes);
+        char * byte_pointer = (char * )data_dump;
+        uint8_t flag = 0;
+        memcpy(&flag, byte_pointer, sizeof(uint8_t));
+
+        uint32_t time_top_unconverted = 0;
+        memcpy(&time_top_unconverted, byte_pointer+1, sizeof(uint32_t));
+        uint32_t time_top = ntohl(time_top_unconverted);
+
+        uint32_t time_bottom_unconverted = 0;
+        memcpy(&time_bottom_unconverted, byte_pointer+5, sizeof(uint32_t));
+        uint32_t time_bottom = ntohl(time_bottom_unconverted);
+
+        uint32_t picture_size_unconverted = 0;
+        memcpy(&picture_size_unconverted, byte_pointer+9, sizeof(uint32_t));
+        uint32_t picture_size = ntohl(picture_size_unconverted);
+
+        printf("picture size: %" PRIu32 "\n", picture_size);
+
+        unsigned char * picture_data = malloc(picture_size);
+        unsigned char * picture_data_pointer = picture_data;
+
+        uint32_t bytes = 0;
+
+
+        while(bytes < picture_size) {
+            int current_bytes = recv(socket_descriptor,
+                                     picture_data_pointer,
+                                     picture_size,
+                                     0);
+            if (current_bytes == -1) {
+                fprintf(stderr, "Error, on receiving picture.\n");
+                exit(1);
+            }
+            printf("current_bytes: %d\n", current_bytes);
+            printf("Current bytes: %"PRIu32"!\n", bytes);
+            bytes += current_bytes;
+            picture_data_pointer += current_bytes;
+        }
+        printf("Got all the bytes: %"PRIu32"!\n", bytes);
+
+        char filename_format[] = "data/images/CAMERA_OUTPUT_%04d.jpeg";
+        char filepath[sizeof(filename_format)+24];
+        sprintf(filepath, filename_format, picture);
+        int written = printf("Saving image to disk: %s.\n", filepath);
+        filepath[written] = '\0';
+        FILE * output_file = fopen(filepath, "wb");
+        fwrite(picture_data, picture_size, 1, output_file);
+        fclose(output_file);
+
+        picture += 1;
+
+        free(picture_data);
+        picture_data = NULL;
+        picture_data_pointer = NULL;
     }
+
     close(socket_descriptor);
 
     return 0;

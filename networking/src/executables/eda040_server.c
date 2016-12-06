@@ -221,6 +221,7 @@ void * receive_work_function (void * input_data)
 
         if (numbytes == 0) {
             printf("\n###### CONTINUING!!\n\n");
+            thread_data->new_socket_descriptor = NULL;
             continue;
         }
 
@@ -232,14 +233,6 @@ void * receive_work_function (void * input_data)
         for (uint32_t i = 0; i < data_size; i++) {
             converted_data[i] = ntohl(data_pointer[1+i]);
         }
-
-        // Information about data.
-//        for (uint32_t i = 0; i < data_size-1; i++) {
-//            printf("%s Received data [%" PRIu32 "] = %" PRIu32 ".\n",
-//                   output_tag,
-//                   i,
-//                   converted_data[i]);
-//        }
 
         // Create new node for the receive list.
         struct data_node * node = my_malloc(sizeof(struct data_node));
@@ -305,23 +298,23 @@ void * send_work_function (void * input_data)
         // Calculate how many uint32_t we need to store the data.
         // Add extra data for:
         //  - Extra element in case of the division not being even.
-        size_t num_uints = (data_size/sizeof(uint32_t))+1;
-        size_t total_data_ammount = sizeof(uint32_t)*num_uints;
-        uint32_t * send_data = my_malloc(total_data_ammount);
-
-        // Convert all the data to net long.
-//        send_data[0] = htonl(total_data_ammount); // Store data stream size in first element.
-//        send_data[1] = htonl(data_size); // Store actual size in first element.
-        uint32_t * data_pointer = (uint32_t * )current->data;
-        for (uint32_t i=0; i<num_uints; i++) {
-            send_data[i] = htonl(data_pointer[i]);
-        }
+//        size_t num_uints = (data_size/sizeof(uint32_t))+1;
+//        size_t total_data_ammount = sizeof(uint32_t)*num_uints;
+//        uint32_t * send_data = my_malloc(total_data_ammount);
+//
+//        // Convert all the data to net long.
+////        send_data[0] = htonl(total_data_ammount); // Store data stream size in first element.
+////        send_data[1] = htonl(data_size); // Store actual size in first element.
+//        uint32_t * data_pointer = (uint32_t * )current->data;
+//        for (uint32_t i=0; i<num_uints; i++) {
+//            send_data[i] = htonl(data_pointer[i]);
+//        }
 
         // Send data.
         printf("%s Sending data of data_size: %zu.\n",
                output_tag,
-               total_data_ammount);
-        int status = send(new_socket_descriptor, send_data, total_data_ammount, 0);
+               (size_t)data_size);
+        int status = send(new_socket_descriptor, current->data, data_size, 0);
         if (status == -1) {
             printf("%s User closed connection.\n", output_tag);
             // Set new_socket_descriptor to NULL.
@@ -330,7 +323,7 @@ void * send_work_function (void * input_data)
         }
 
         // Free temporary data storage.
-        free(send_data);
+        //free(send_data);
 
         printf("%s Data sent.\n", output_tag);
 
@@ -357,15 +350,24 @@ void * capture_work_function (void * input_data)
 {
     // Unpack input data.
     struct socket_data * data = (struct socket_data * )input_data;
-    const char * options = "fps=25&sdk=format=Y800&resolution=160x120";
+    const char * options = "fps=25&sdk=format=Y800&resolution=320X240";
 
     // Set up image stream on camera.
     media_stream * stream = capture_open_stream(IMAGE_JPEG, options);
     media_frame * image_frame;
     size_t image_size = 0;
     void * capture_data = NULL;
-    capture_time time_stamp = {0};
+    capture_time time_stamp = 0;
     size_t timestamp_size = sizeof(capture_time);
+
+    struct timespec start = {0};
+    clock_gettime(CLOCK_MONOTONIC, &start);
+
+    const char * output_tag = "[Capture]:";
+    uint64_t time_stamp_millis = 0;
+
+    time_stamp_millis += start.tv_sec * 1000;
+    time_stamp_millis += start.tv_nsec / pow(10, 6);
 
     for (;;) { // Action loop.
 
@@ -382,7 +384,7 @@ void * capture_work_function (void * input_data)
         // Total size of image data and time stamp.
         size_t header_flag = 1;
         size_t size_space = 4;
-        size_t total_data_size = header_flag+size_space+timestamp_size+image_size;
+        size_t total_data_size = header_flag+timestamp_size+size_space+image_size;
 
         // Allocate memory on the heap for image data.
         capture_data = my_malloc(total_data_size);
@@ -390,20 +392,28 @@ void * capture_work_function (void * input_data)
         // Set up byte_pointer.
         unsigned char * byte_pointer = (unsigned char * )capture_data;
 
-        // Set the correct flag for picture.
-        unsigned char ones = 0xff;
-
-        // Copy header flag to data.
-        memcpy(byte_pointer, &ones, header_flag);
+        // Set header flag.
+        *byte_pointer = 1;
         byte_pointer += header_flag;
 
-        // Copy image size to data.
-        memcpy(byte_pointer, &image_size, size_space);
-        byte_pointer += size_space;
+        time_stamp_millis += time_stamp / pow(10, 6);
 
-        // Copy time stamp data to data.
-        memcpy(byte_pointer, &time_stamp, timestamp_size);
+        // Copy time stamp data to output data.
+        uint32_t converted_time_millis[2];
+        uint32_t * u32_pointer = (uint32_t * )&time_stamp_millis;
+        uint32_t time_top = *(u32_pointer+1);
+        uint32_t time_bottom = *u32_pointer;
+        printf("%s Top part of timestamp: %" PRIu32 "\n", output_tag, time_top);
+        printf("%s Lower part of timestamp: %" PRIu32 "\n", output_tag, time_bottom);
+        converted_time_millis[0] = htonl(time_top);
+        converted_time_millis[1] = htonl(time_bottom);
+        memcpy(byte_pointer, &converted_time_millis, sizeof(uint64_t));
         byte_pointer += timestamp_size;
+
+        // Copy image size to data.
+        size_t converted_image_size = htonl(image_size);
+        memcpy(byte_pointer, &converted_image_size, size_space);
+        byte_pointer += size_space;
 
         // Copy image data from frame to heap.
         memcpy(byte_pointer, capture_frame_data(image_frame), image_size);
@@ -444,7 +454,7 @@ void * capture_work_function (void * input_data)
             }
         }
 
-        printf("[Capture]: Capturing picture.\n");
+        printf("%s Capturing picture.\n", output_tag);
 
         // Signal send thread.
         pthread_cond_signal(data->data_to_send_sig);
@@ -495,7 +505,7 @@ int main(void)
     pthread_create(&send, NULL, send_work_function, &data);
 
     // Set capture interval to default capture.
-    float default_capture = 0.5f;
+    float default_capture = 0.3f;
     set_capture_interval(default_capture);
 
     // Create and run capture thread.
