@@ -287,7 +287,7 @@ void * send_work_function (void * input_data)
         }
 
         // Has lock here if awoken.
-        printf("%s There is data and a connected client!\n", output_tag);
+        printf("%s There is data and a connected client.\n", output_tag);
 
         // Use socket descriptor from receive thread.
         int new_socket_descriptor = *data->new_socket_descriptor;
@@ -295,20 +295,6 @@ void * send_work_function (void * input_data)
         struct data_node * current = send_list;
 
         uint32_t data_size = current->size;
-        // Calculate how many uint32_t we need to store the data.
-        // Add extra data for:
-        //  - Extra element in case of the division not being even.
-//        size_t num_uints = (data_size/sizeof(uint32_t))+1;
-//        size_t total_data_ammount = sizeof(uint32_t)*num_uints;
-//        uint32_t * send_data = my_malloc(total_data_ammount);
-//
-//        // Convert all the data to net long.
-////        send_data[0] = htonl(total_data_ammount); // Store data stream size in first element.
-////        send_data[1] = htonl(data_size); // Store actual size in first element.
-//        uint32_t * data_pointer = (uint32_t * )current->data;
-//        for (uint32_t i=0; i<num_uints; i++) {
-//            send_data[i] = htonl(data_pointer[i]);
-//        }
 
         // Send data.
         printf("%s Sending data of data_size: %zu.\n",
@@ -321,9 +307,6 @@ void * send_work_function (void * input_data)
             data->new_socket_descriptor = NULL;
             continue;
         }
-
-        // Free temporary data storage.
-        //free(send_data);
 
         printf("%s Data sent.\n", output_tag);
 
@@ -403,8 +386,6 @@ void * capture_work_function (void * input_data)
         uint32_t * u32_pointer = (uint32_t * )&time_stamp_millis;
         uint32_t time_top = *(u32_pointer+1);
         uint32_t time_bottom = *u32_pointer;
-        printf("%s Top part of timestamp: %" PRIu32 "\n", output_tag, time_top);
-        printf("%s Lower part of timestamp: %" PRIu32 "\n", output_tag, time_bottom);
         converted_time_millis[0] = htonl(time_top);
         converted_time_millis[1] = htonl(time_bottom);
         memcpy(byte_pointer, &converted_time_millis, sizeof(uint64_t));
@@ -454,10 +435,17 @@ void * capture_work_function (void * input_data)
             }
         }
 
-        printf("%s Capturing picture.\n", output_tag);
+        printf("\r%s Capturing picture, Top part of timestamp: %" PRIu32 " Lower part of timestamp: %" PRIu32,
+               output_tag,
+               time_top,
+               time_bottom);
+        fflush(stdout);
 
-        // Signal send thread.
-        pthread_cond_signal(data->data_to_send_sig);
+        if (data->new_socket_descriptor != NULL) {
+            // Signal send thread.
+            pthread_cond_signal(data->data_to_send_sig);
+            printf("\n");
+        }
 
         // Release data mutex.
         pthread_mutex_unlock(data->data_mutex);
