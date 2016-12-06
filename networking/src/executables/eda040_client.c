@@ -149,7 +149,7 @@ int main(int argc, char * argv[]) {
     int picture = 0;
 
     for (;;) {
- //   // Receive data.
+        // Receive data.
         printf("Waiting for data.\n");
         numbytes = recv(socket_descriptor,
                         data_dump,
