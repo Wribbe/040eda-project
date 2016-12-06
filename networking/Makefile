@@ -5,6 +5,7 @@ dir_executables = executables
 dir_emb_executables := $(dir_executables)/embedded
 dir_libfolders := ./lib ./lib/embedded
 dir_include := include
+dir_images := data/images
 
 # Embedded compiler variables.
 emb_comp_base_dir := $(shell pwd)/data/comptools-mips-r12_1.2-0/comptools-mips-r12_1.2-0_amd64/mipsisa32r2el/r12
@@ -62,6 +63,7 @@ change_to_embedded:
 mkdirs:
 	$(call conditional_mkdir,$(dir_objects))
 	$(call conditional_mkdir,$(dir_executables))
+	$(call conditional_mkdir,$(dir_images))
 
 embed_mkdirs:
 	$(call conditional_mkdir,$(dir_emb_objects))
@@ -70,6 +72,7 @@ embed_mkdirs:
 clean:
 	rm -rf $(dir_objects)
 	rm -rf $(dir_executables)
+	rm -rf $(dir_images)
 	rm -rf vgcore.*
 
 # Regular executables.
