@@ -335,24 +335,32 @@ void * capture_work_function (void * input_data)
     struct socket_data * data = (struct socket_data * )input_data;
     const char * options = "fps=25&sdk=format=Y800&resolution=320X240";
 
-    // Set up image stream on camera.
-    media_stream * stream = capture_open_stream(IMAGE_JPEG, options);
-    media_frame * image_frame;
-    size_t image_size = 0;
-    void * capture_data = NULL;
+    // Output prefix tag.
+    const char * output_tag = "[Capture]:";
+
+    // Time related variables.
     capture_time time_stamp = 0;
     capture_time ref_nano = 0;
     size_t timestamp_size = sizeof(capture_time);
 
-//    struct timespec start = {0};
-//    clock_gettime(CLOCK_MONOTONIC, &start);
-    time_t start = time(NULL);
+    // Get current system time.
+    struct timespec real_time = {0};
+    clock_gettime(CLOCK_REALTIME, &real_time);
 
-    const char * output_tag = "[Capture]:";
+    // Image variables.
+    size_t image_size = 0;
+    void * capture_data = NULL;
+    // Set up image stream on camera.
+    printf("%s Opening up media stream.\n", output_tag);
+    media_stream * stream = capture_open_stream(IMAGE_JPEG, options);
+    media_frame * image_frame;
+    printf("%s Stream open.\n", output_tag);
+
+    // Set current time stamp.
     uint64_t time_stamp_millis = 0;
 
-//    time_stamp_millis += start.tv_sec * 1000;
-//    time_stamp_millis += start.tv_nsec / 1e6;
+    time_stamp_millis += ((uint64_t)real_time.tv_sec) * 1000;
+    time_stamp_millis += real_time.tv_nsec / 1e6;
 
     for (;;) { // Action loop.
 
@@ -385,8 +393,7 @@ void * capture_work_function (void * input_data)
             ref_nano = time_stamp;
         }
 
-        //time_stamp_millis += (time_stamp - ref_nano) / 1e6;
-        time_stamp_millis = time(NULL)*1000;
+        time_stamp_millis += (time_stamp - ref_nano) / 1e6;
 
         // Copy time stamp data to output data.
         uint32_t converted_time_millis[2];
@@ -500,7 +507,7 @@ int main(void)
     pthread_create(&send, NULL, send_work_function, &data);
 
     // Set capture interval to default capture.
-    float default_capture = 0.3f;
+    float default_capture = 0.04f;
     set_capture_interval(default_capture);
 
     // Create and run capture thread.
