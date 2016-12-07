@@ -21,6 +21,12 @@ conditional_mkdir = \
 		mkdir $(1); \
 	fi
 
+cameras := 1 2 3 4 5 6
+push_cameras = \
+	@for camera in $(cameras) ; do \
+		./push_to_camera.sh $$camera ; \
+	done
+
 sources = $(foreach filename,$(wildcard $(dir_source)/*.c),$(notdir $(filename)))
 objects = $(sources:.c=.o)
 executables = $(foreach filename,$(sources:.c=),$(dir_executables)/$(filename))
@@ -38,7 +44,7 @@ FLAGS := $(my_flags) $(CFLAGS) $(libraries)
 # Commands that add/remove files.
 .PHONY: all embed emb both clean
 # Utility commands.
-.PHONY:	embed_mkdirs mkdirs change_to_embedded serv
+.PHONY:	embed_mkdirs mkdirs change_to_embedded serv push pushall
 
 all: $(executables)
 
@@ -49,6 +55,9 @@ both: all embed
 
 push: embed
 	./push_to_camera.sh $(cam)
+
+push_all: embed
+	$(call push_cameras)
 
 serv: both
 	./$(dir_executables)/eda040_server
