@@ -341,16 +341,18 @@ void * capture_work_function (void * input_data)
     size_t image_size = 0;
     void * capture_data = NULL;
     capture_time time_stamp = 0;
+    capture_time ref_nano = 0;
     size_t timestamp_size = sizeof(capture_time);
 
-    struct timespec start = {0};
-    clock_gettime(CLOCK_MONOTONIC, &start);
+//    struct timespec start = {0};
+//    clock_gettime(CLOCK_MONOTONIC, &start);
+    time_t start = time(NULL);
 
     const char * output_tag = "[Capture]:";
     uint64_t time_stamp_millis = 0;
 
-    time_stamp_millis += start.tv_sec * 1000;
-    time_stamp_millis += start.tv_nsec / pow(10, 6);
+//    time_stamp_millis += start.tv_sec * 1000;
+//    time_stamp_millis += start.tv_nsec / 1e6;
 
     for (;;) { // Action loop.
 
@@ -379,7 +381,12 @@ void * capture_work_function (void * input_data)
         *byte_pointer = 1;
         byte_pointer += header_flag;
 
-        time_stamp_millis += time_stamp / pow(10, 6);
+        if (ref_nano == 0) {
+            ref_nano = time_stamp;
+        }
+
+        //time_stamp_millis += (time_stamp - ref_nano) / 1e6;
+        time_stamp_millis = time(NULL)*1000;
 
         // Copy time stamp data to output data.
         uint32_t converted_time_millis[2];
