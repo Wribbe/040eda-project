@@ -73,12 +73,13 @@ struct data_node
     struct data_node * next;
 };
 
-void set_capture_interval(float seconds) {
-    printf("[INFO]: Setting capture interval to %.2fs.\n", seconds);
+void set_capture_interval(uint8_t pictures_per_second) {
+    printf("[INFO]: Setting capture interval to %" PRIu8 "/s.\n", pictures_per_second);
     // Divide with 1 to get the full number of seconds.
-    PICTURE_INTERVAL.tv_sec = seconds/1;
+    float seconds_per_picture = 1.0/pictures_per_second;
+    PICTURE_INTERVAL.tv_sec = seconds_per_picture/1;
     // Take the remainder and multiply by 10^9 to convert it to nanoseconds.
-    PICTURE_INTERVAL.tv_nsec = fmodf(seconds, 1.0)*pow(10, 9);
+    PICTURE_INTERVAL.tv_nsec = fmodf(seconds_per_picture, 1.0)*1e9;
 }
 
 struct data_node * receive_list = NULL;
@@ -339,9 +340,9 @@ void * capture_work_function (void * input_data)
     const char * output_tag = "[Capture]:";
 
     // Time related variables.
-    capture_time time_stamp = 0;
-    capture_time ref_nano = 0;
-    size_t timestamp_size = sizeof(capture_time);
+    uint64_t time_stamp = 0;
+    uint64_t ref_nano = 0;
+    size_t timestamp_size = sizeof(uint64_t);
 
     // Get current system time.
     struct timespec real_time = {0};
@@ -357,10 +358,12 @@ void * capture_work_function (void * input_data)
     printf("%s Stream open.\n", output_tag);
 
     // Set current time stamp.
+    uint64_t ref_time_millis = 0;
     uint64_t time_stamp_millis = 0;
 
-    time_stamp_millis += ((uint64_t)real_time.tv_sec) * 1000;
-    time_stamp_millis += real_time.tv_nsec / 1e6;
+    // Set reference time.
+    ref_time_millis += ((uint64_t)real_time.tv_sec) * 1000;
+    ref_time_millis += real_time.tv_nsec / 1e6;
 
     for (;;) { // Action loop.
 
@@ -372,7 +375,7 @@ void * capture_work_function (void * input_data)
         // Get frame, size and time stamp.
         image_frame = capture_get_frame(stream);
         image_size = capture_frame_size(image_frame);
-        time_stamp = capture_frame_timestamp(image_frame);
+        time_stamp = (uint64_t)capture_frame_timestamp(image_frame);
 
         // Total size of image data and time stamp.
         size_t header_flag = 1;
@@ -390,10 +393,10 @@ void * capture_work_function (void * input_data)
         byte_pointer += header_flag;
 
         if (ref_nano == 0) {
-            ref_nano = time_stamp;
+            ref_nano = (uint64_t)time_stamp;
         }
 
-        time_stamp_millis += (time_stamp - ref_nano) / 1e6;
+        time_stamp_millis = ref_time_millis + ((time_stamp - ref_nano) / 1e6);
 
         // Copy time stamp data to output data.
         uint32_t converted_time_millis[2];
@@ -507,8 +510,8 @@ int main(void)
     pthread_create(&send, NULL, send_work_function, &data);
 
     // Set capture interval to default capture.
-    float default_capture = 0.04f;
-    set_capture_interval(default_capture);
+    uint8_t pictures_per_second = 25;
+    set_capture_interval(pictures_per_second);
 
     // Create and run capture thread.
     printf("%s Created thread for capturing pictures.\n", output_tag);
