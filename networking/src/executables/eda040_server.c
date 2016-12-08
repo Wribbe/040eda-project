@@ -452,6 +452,8 @@ void * capture_work_function (void * input_data)
             }
         }
 
+        printf("Size of picture: %zn\n", image_size);
+
         printf("\r%s Capturing picture, Top part of timestamp: %" PRIu32 " Lower part of timestamp: %" PRIu32,
                output_tag,
                time_top,
